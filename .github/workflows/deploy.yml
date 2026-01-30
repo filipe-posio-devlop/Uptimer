@@ -146,18 +146,25 @@ jobs:
         run: |
           set -euo pipefail
 
-          if pnpm exec wrangler d1 info "$D1_NAME" --json > d1.json 2>/dev/null; then
-            echo "D1 database exists: $D1_NAME"
-          else
+          # NOTE: `wrangler d1 info <name>` may prefer local wrangler.toml bindings
+          # (and therefore the placeholder database_id) when a config exists.
+          # Use `d1 list --json` to resolve by remote database name instead.
+          resolve_id() {
+            pnpm exec wrangler d1 list --json \
+              | jq -r '((.result // .) | map(select(.name == env.D1_NAME)) | .[0].uuid // .[0].id // empty)'
+          }
+
+          D1_ID="$(resolve_id || true)"
+          if [[ -z "$D1_ID" || "$D1_ID" == "null" ]]; then
             echo "Creating D1 database: $D1_NAME"
             pnpm exec wrangler d1 create "$D1_NAME"
-            pnpm exec wrangler d1 info "$D1_NAME" --json > d1.json
+            D1_ID="$(resolve_id || true)"
+          else
+            echo "D1 database exists: $D1_NAME"
           fi
 
-          D1_ID="$(jq -r '.uuid // .result.uuid // empty' d1.json)"
           if [[ -z "$D1_ID" || "$D1_ID" == "null" ]]; then
-            echo "Failed to extract D1 id from wrangler output:"
-            cat d1.json
+            echo "Failed to resolve D1 id for database: $D1_NAME"
             exit 1
           fi
 
