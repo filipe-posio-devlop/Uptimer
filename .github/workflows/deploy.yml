@@ -210,6 +210,7 @@ jobs:
           d1_binding = os.environ.get("D1_BINDING", "DB")
           d1_name = os.environ["D1_NAME"]
           d1_id = os.environ["D1_ID"]
+          migrations_dir = (src.parent / "migrations").resolve().as_posix()
 
           text = src.read_text(encoding="utf-8")
 
@@ -253,6 +254,7 @@ jobs:
               if (not replaced) and binding_m and binding_m.group(1) == d1_binding:
                   block = set_or_insert_kv(block, "database_name", d1_name)
                   block = set_or_insert_kv(block, "database_id", d1_id)
+                  block = set_or_insert_kv(block, "migrations_dir", migrations_dir)
                   replaced = True
               out.append(block)
               last = m.end()
