@@ -306,6 +306,7 @@ jobs:
             api_base="/api/v1"
           fi
 
+          echo "Using VITE_API_BASE=$api_base"
           echo "VITE_API_BASE=$api_base" >> "$GITHUB_ENV"
         env:
           UPTIMER_API_BASE: ${{ vars.UPTIMER_API_BASE }}
@@ -317,12 +318,11 @@ jobs:
 
       - name: Ensure Pages project exists (idempotent)
         shell: bash
-        working-directory: apps/worker
         run: |
           set -euo pipefail
 
           set +e
-          output="$(pnpm exec wrangler pages project create "$PAGES_PROJECT" --production-branch "$DEFAULT_BRANCH" 2>&1)"
+          output="$(pnpm -C apps/worker exec wrangler pages project create "$PAGES_PROJECT" --production-branch "$DEFAULT_BRANCH" 2>&1)"
           code="$?"
           set -e
 
@@ -347,10 +347,9 @@ jobs:
 
       - name: Deploy Pages (idempotent)
         shell: bash
-        working-directory: apps/worker
         run: |
           set -euo pipefail
-          pnpm exec wrangler pages deploy ../web/dist \
+          pnpm -C apps/worker exec wrangler pages deploy apps/web/dist \
             --project-name "$PAGES_PROJECT" \
             --branch "$DEFAULT_BRANCH" \
             --commit-hash "$GITHUB_SHA" \
