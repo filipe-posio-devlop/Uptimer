@@ -347,7 +347,21 @@ export function AdminDashboard() {
               />
             )}
             {(modal.type === 'create-channel' || modal.type === 'edit-channel') && (
-              <NotificationChannelForm channel={modal.type === 'edit-channel' ? modal.channel : undefined} onSubmit={(data) => modal.type === 'edit-channel' ? updateChannelMut.mutate({ id: modal.channel.id, data }) : createChannelMut.mutate(data)} onCancel={closeModal} isLoading={createChannelMut.isPending || updateChannelMut.isPending} />
+              <NotificationChannelForm
+                channel={modal.type === 'edit-channel' ? modal.channel : undefined}
+                onSubmit={(data) =>
+                  modal.type === 'edit-channel'
+                    ? updateChannelMut.mutate({ id: modal.channel.id, data })
+                    : createChannelMut.mutate(data)
+                }
+                onCancel={closeModal}
+                isLoading={createChannelMut.isPending || updateChannelMut.isPending}
+                error={
+                  modal.type === 'edit-channel'
+                    ? formatError(updateChannelMut.error)
+                    : formatError(createChannelMut.error)
+                }
+              />
             )}
             {modal.type === 'create-incident' && (
               <IncidentForm monitors={(monitorsQuery.data?.monitors ?? []).map((m) => ({ id: m.id, name: m.name }))} onSubmit={(data) => createIncidentMut.mutate(data)} onCancel={closeModal} isLoading={createIncidentMut.isPending} />

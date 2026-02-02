@@ -417,6 +417,7 @@ async function runDueMonitor(
       db: env.DB,
       env: notify.envRecord,
       channels: notify.channels,
+      eventType,
       eventKey,
       payload,
     }).catch((err) => {

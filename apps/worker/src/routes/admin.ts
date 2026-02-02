@@ -22,7 +22,7 @@ import { refreshPublicStatusSnapshot } from '../snapshots';
 import { runHttpCheck } from '../monitor/http';
 import { validateHttpTarget, validateTcpTarget } from '../monitor/targets';
 import { runTcpCheck } from '../monitor/tcp';
-import { dispatchWebhookToChannel, dispatchWebhookToChannels, type WebhookChannel } from '../notify/webhook';
+import { dispatchWebhookToChannelLegacy, dispatchWebhookToChannels, type WebhookChannel } from '../notify/webhook';
 import { adminAnalyticsRoutes } from './admin-analytics';
 import { adminExportsRoutes } from './admin-exports';
 import {
@@ -708,9 +708,12 @@ adminRoutes.post('/notification-channels/:id/test', async (c) => {
     event: 'test.ping',
     event_id: eventKey,
     timestamp: now,
+    // Provide representative fields so templates can be validated via the test button.
+    monitor: { id: 0, name: 'Example monitor', type: 'http', target: 'https://example.com/health' },
+    state: { status: 'up', latency_ms: 123, http_status: 200, error: null, location: null },
   };
 
-  await dispatchWebhookToChannel({
+  await dispatchWebhookToChannelLegacy({
     db: c.env.DB,
     env: c.env as unknown as Record<string, unknown>,
     channel,
@@ -830,6 +833,7 @@ adminRoutes.post('/incidents', async (c) => {
       db: c.env.DB,
       env: c.env as unknown as Record<string, unknown>,
       channels,
+      eventType: payload.event,
       eventKey,
       payload,
     });
@@ -924,6 +928,7 @@ adminRoutes.post('/incidents/:id/updates', async (c) => {
       db: c.env.DB,
       env: c.env as unknown as Record<string, unknown>,
       channels,
+      eventType: payload.event,
       eventKey,
       payload,
     });
@@ -1023,6 +1028,7 @@ adminRoutes.patch('/incidents/:id/resolve', async (c) => {
       db: c.env.DB,
       env: c.env as unknown as Record<string, unknown>,
       channels,
+      eventType: payload.event,
       eventKey,
       payload,
     });

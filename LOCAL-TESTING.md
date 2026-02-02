@@ -210,6 +210,98 @@ curl -X DELETE http://localhost:8787/api/v1/admin/monitors/{id} \
   -H "Authorization: Bearer your-secure-token-here"
 ```
 
+### 通知（Webhook）
+
+#### 创建通知渠道（自定义模板 + 魔法变量）
+
+下面示例会：
+- 使用 `payload_type: json`
+- 用 `message_template` 生成可复用的 `{{message}}`
+- 用 `payload_template` 自定义最终发送给 webhook 的 JSON 结构
+
+```bash
+curl -X POST http://localhost:8787/api/v1/admin/notification-channels \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secure-token-here" \
+  -d '{
+    "name": "My Webhook",
+    "type": "webhook",
+    "config_json": {
+      "url": "https://example.com/webhook",
+      "method": "POST",
+      "timeout_ms": 5000,
+      "payload_type": "json",
+      "message_template": "[{{event}}] {{monitor.name}} => {{state.status}}\\n$MSG",
+      "payload_template": {
+        "text": "{{message}}",
+        "event": "{{event}}",
+        "event_id": "{{event_id}}",
+        "monitor": {
+          "id": "{{monitor.id}}",
+          "name": "{{monitor.name}}",
+          "target": "{{monitor.target}}"
+        }
+      },
+      "enabled_events": ["monitor.down", "monitor.up"]
+    }
+  }'
+```
+
+#### 发送 test webhook（会走模板渲染；event 固定为 test.ping）
+
+```bash
+curl -X POST http://localhost:8787/api/v1/admin/notification-channels/{id}/test \
+  -H "Authorization: Bearer your-secure-token-here"
+```
+
+#### payload_type = param（GET/POST 都可；会把 payload_template 展平成 query params）
+
+```bash
+curl -X POST http://localhost:8787/api/v1/admin/notification-channels \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secure-token-here" \
+  -d '{
+    "name": "QueryParam Webhook",
+    "type": "webhook",
+    "config_json": {
+      "url": "https://example.com/webhook",
+      "method": "GET",
+      "payload_type": "param",
+      "payload_template": {
+        "event": "{{event}}",
+        "monitor": "{{monitor.name}}",
+        "msg": "{{message}}"
+      }
+    }
+  }'
+```
+
+#### payload_type = x-www-form-urlencoded
+
+```bash
+curl -X POST http://localhost:8787/api/v1/admin/notification-channels \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-secure-token-here" \
+  -d '{
+    "name": "Form Webhook",
+    "type": "webhook",
+    "config_json": {
+      "url": "https://example.com/webhook",
+      "method": "POST",
+      "payload_type": "x-www-form-urlencoded",
+      "payload_template": {
+        "event": "{{event}}",
+        "msg": "{{message}}"
+      }
+    }
+  }'
+```
+
+> 魔法变量规则（简版）：
+> - 支持 `{{path.to.field}}` 和数组索引 `{{arr[0].x}}`
+> - 兼容 `$MSG`（会替换为渲染后的 message）
+> - `{{message}}` 是渲染后的最终消息；`{{default_message}}` 是系统默认消息
+
 ### 测试定时任务
 
 Wrangler 支持手动触发 cron 任务：
@@ -287,6 +379,7 @@ curl -X POST http://localhost:8787/api/v1/admin/maintenance-windows \
 curl -X DELETE http://localhost:8787/api/v1/admin/maintenance-windows/1 \
   -H "Authorization: Bearer your-secure-token-here"
 ```
+
 ---
 
 ## Phase 10: Analytics & 报表（最小示例）

@@ -3,6 +3,7 @@ import pLimit from 'p-limit';
 import type { WebhookChannelConfig } from '@uptimer/db';
 
 import { claimNotificationDelivery, finalizeNotificationDelivery } from './dedupe';
+import { defaultMessageForEvent, renderJsonTemplate, renderStringTemplate } from './template';
 
 export type WebhookChannel = {
   id: number;
@@ -51,13 +52,118 @@ function readEnvSecret(env: Record<string, unknown>, ref: string): string | null
   return typeof v === 'string' && v.length > 0 ? v : null;
 }
 
+function shouldSendEvent(config: WebhookChannelConfig, eventType: string): boolean {
+  // Always allow test sends so users can validate channel config.
+  if (eventType === 'test.ping') return true;
+
+  const enabled = config.enabled_events;
+  if (!enabled || enabled.length === 0) return true;
+  return enabled.includes(eventType as never);
+}
+
+function coerceFlatParams(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === 'string') {
+      out[k] = v;
+      continue;
+    }
+    if (typeof v === 'number' || typeof v === 'boolean') {
+      out[k] = String(v);
+      continue;
+    }
+
+    // Fallback: encode as JSON.
+    try {
+      out[k] = JSON.stringify(v);
+    } catch {
+      out[k] = String(v);
+    }
+  }
+
+  return out;
+}
+
+function appendQueryParams(url: string, params: Record<string, string>): string {
+  const u = new URL(url);
+  for (const [k, v] of Object.entries(params)) {
+    u.searchParams.append(k, v);
+  }
+  return u.toString();
+}
+
+function buildTemplateVars(args: {
+  channel: WebhookChannel;
+  eventType: string;
+  eventKey: string;
+  payload: unknown;
+  now: number;
+}): { vars: Record<string, unknown>; message: string; payload: unknown } {
+  const rawPayloadForVars = args.payload;
+  const payloadRecord =
+    rawPayloadForVars && typeof rawPayloadForVars === 'object' && !Array.isArray(rawPayloadForVars)
+      ? (rawPayloadForVars as Record<string, unknown>)
+      : {};
+
+  const baseVars: Record<string, unknown> = {
+    ...payloadRecord,
+    payload: rawPayloadForVars,
+    channel: { id: args.channel.id, name: args.channel.name },
+    event: args.eventType,
+    event_id: args.eventKey,
+    timestamp: args.now,
+  };
+
+  const defaultMessage = defaultMessageForEvent(args.eventType, baseVars);
+
+  const message = args.channel.config.message_template
+    ? renderStringTemplate(args.channel.config.message_template, {
+        ...baseVars,
+        message: defaultMessage,
+        default_message: defaultMessage,
+      })
+    : defaultMessage;
+
+  const vars: Record<string, unknown> = {
+    ...baseVars,
+    message,
+    default_message: defaultMessage,
+  };
+
+  let payload: unknown;
+  if (args.channel.config.payload_template !== undefined) {
+    payload = renderJsonTemplate(args.channel.config.payload_template, vars);
+  } else if (args.channel.config.payload_type === 'json') {
+    // Default behavior: keep the original payload structure for existing setups.
+    payload = args.payload;
+  } else {
+    // For non-JSON payload types, default to a minimal flat payload.
+    payload = {
+      event: args.eventType,
+      event_id: args.eventKey,
+      timestamp: args.now,
+      message,
+    };
+  }
+
+  return { vars, message, payload };
+}
+
 export async function dispatchWebhookToChannel(args: {
   db: D1Database;
   env: Record<string, unknown>;
   channel: WebhookChannel;
+  eventType: string;
   eventKey: string;
   payload: unknown;
 }): Promise<'sent' | 'skipped'> {
+  if (!shouldSendEvent(args.channel.config, args.eventType)) {
+    return 'skipped';
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const claimed = await claimNotificationDelivery(args.db, args.eventKey, args.channel.id, now);
   if (!claimed) {
@@ -66,91 +172,191 @@ export async function dispatchWebhookToChannel(args: {
 
   const config = args.channel.config;
   const method = config.method.toUpperCase();
-  const headers = new Headers(config.headers ?? undefined);
-
   const canHaveBody = method !== 'GET' && method !== 'HEAD';
-  const rawBody = canHaveBody ? JSON.stringify(args.payload) : '';
-
-  if (canHaveBody && !headers.has('content-type')) {
-    headers.set('Content-Type', 'application/json; charset=utf-8');
-  }
-
-  if (config.signing?.enabled) {
-    const secret = readEnvSecret(args.env, config.signing.secret_ref);
-    if (!secret) {
-      await finalizeNotificationDelivery(args.db, args.eventKey, args.channel.id, {
-        status: 'failed',
-        httpStatus: null,
-        error: `Signing secret not configured: ${config.signing.secret_ref}`,
-      });
-      return 'sent';
-    }
-
-    const timestamp = now;
-    const sig = await hmacSha256Hex(secret, `${timestamp}.${rawBody}`);
-    headers.set('X-Uptimer-Timestamp', String(timestamp));
-    headers.set('X-Uptimer-Signature', `sha256=${sig}`);
-  }
-
-  const timeoutMs = config.timeout_ms ?? DEFAULT_TIMEOUT_MS;
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
 
   let outcome: WebhookDispatchResult;
   try {
-    const init: RequestInit = { method, headers, signal: controller.signal };
-    if (canHaveBody) {
-      init.body = rawBody;
+    const { vars, payload } = buildTemplateVars({
+      channel: args.channel,
+      eventType: args.eventType,
+      eventKey: args.eventKey,
+      payload: args.payload,
+      now,
+    });
+
+    // Allow magic vars in header values.
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(config.headers ?? {})) {
+      headers.set(k, renderStringTemplate(v, vars));
     }
 
-    const res = await fetch(config.url, init);
-    res.body?.cancel();
+    let url = config.url;
+    let rawBody = '';
 
-    if (res.ok) {
-      outcome = { status: 'success', httpStatus: res.status, error: null };
-    } else {
-      outcome = { status: 'failed', httpStatus: res.status, error: `HTTP ${res.status}` };
+    switch (config.payload_type) {
+      case 'param': {
+        const params = coerceFlatParams(payload);
+        url = appendQueryParams(url, params);
+        break;
+      }
+      case 'x-www-form-urlencoded': {
+        const params = coerceFlatParams(payload);
+        if (canHaveBody) {
+          rawBody = new URLSearchParams(params).toString();
+          if (!headers.has('content-type')) {
+            headers.set('Content-Type', 'application/x-www-form-urlencoded; charset=utf-8');
+          }
+        } else {
+          // Cannot send a body (GET/HEAD). Fall back to query params.
+          url = appendQueryParams(url, params);
+        }
+        break;
+      }
+      case 'json':
+      default: {
+        if (canHaveBody) {
+          rawBody = JSON.stringify(payload === undefined ? null : payload);
+          if (!headers.has('content-type')) {
+            headers.set('Content-Type', 'application/json; charset=utf-8');
+          }
+        }
+        break;
+      }
+    }
+
+    if (config.signing?.enabled) {
+      const secret = readEnvSecret(args.env, config.signing.secret_ref);
+      if (!secret) {
+        await finalizeNotificationDelivery(args.db, args.eventKey, args.channel.id, {
+          status: 'failed',
+          httpStatus: null,
+          error: `Signing secret not configured: ${config.signing.secret_ref}`,
+        });
+        return 'sent';
+      }
+
+      const timestamp = now;
+      const sig = await hmacSha256Hex(secret, `${timestamp}.${rawBody}`);
+      headers.set('X-Uptimer-Timestamp', String(timestamp));
+      headers.set('X-Uptimer-Signature', `sha256=${sig}`);
+    }
+
+    const timeoutMs = config.timeout_ms ?? DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const init: RequestInit = {
+        method,
+        headers,
+        signal: controller.signal,
+        cache: 'no-store',
+      };
+
+      if (canHaveBody && rawBody) {
+        init.body = rawBody;
+      }
+
+      const res = await fetch(url, init);
+      res.body?.cancel();
+
+      if (res.ok) {
+        outcome = { status: 'success', httpStatus: res.status, error: null };
+      } else {
+        outcome = { status: 'failed', httpStatus: res.status, error: `HTTP ${res.status}` };
+      }
+    } catch (err) {
+      outcome = {
+        status: 'failed',
+        httpStatus: null,
+        error: isAbortError(err) ? `Timeout after ${timeoutMs}ms` : toErrorMessage(err),
+      };
+    } finally {
+      clearTimeout(t);
     }
   } catch (err) {
-    outcome = {
-      status: 'failed',
-      httpStatus: null,
-      error: isAbortError(err) ? `Timeout after ${timeoutMs}ms` : toErrorMessage(err),
-    };
-  } finally {
-    clearTimeout(t);
+    outcome = { status: 'failed', httpStatus: null, error: toErrorMessage(err) };
   }
 
   await finalizeNotificationDelivery(args.db, args.eventKey, args.channel.id, outcome);
   return 'sent';
 }
 
+// Backward compatible wrapper.
+export async function dispatchWebhookToChannelLegacy(args: {
+  db: D1Database;
+  env: Record<string, unknown>;
+  channel: WebhookChannel;
+  eventKey: string;
+  payload: unknown;
+}): Promise<'sent' | 'skipped'> {
+  const eventType =
+    args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
+      ? (args.payload as { event?: unknown }).event
+      : undefined;
+
+  return dispatchWebhookToChannel({
+    db: args.db,
+    env: args.env,
+    channel: args.channel,
+    eventType: typeof eventType === 'string' ? eventType : 'unknown',
+    eventKey: args.eventKey,
+    payload: args.payload,
+  });
+}
+
 export async function dispatchWebhookToChannels(args: {
   db: D1Database;
   env: Record<string, unknown>;
   channels: WebhookChannel[];
+  eventType: string;
   eventKey: string;
   payload: unknown;
 }): Promise<void> {
-  if (args.channels.length === 0) return;
+  const channels = args.channels.filter((c) => shouldSendEvent(c.config, args.eventType));
+  if (channels.length === 0) return;
 
   const limit = pLimit(WEBHOOK_CONCURRENCY);
   const settled = await Promise.allSettled(
-    args.channels.map((channel) =>
+    channels.map((channel) =>
       limit(() =>
         dispatchWebhookToChannel({
           db: args.db,
           env: args.env,
           channel,
+          eventType: args.eventType,
           eventKey: args.eventKey,
           payload: args.payload,
-        }).catch((err) => Promise.reject({ channel, err }))
-      )
-    )
+        }).catch((err) => Promise.reject({ channel, err })),
+      ),
+    ),
   );
 
   const rejected = settled.filter((r) => r.status === 'rejected');
   if (rejected.length > 0) {
     console.error(`notify: ${rejected.length}/${settled.length} webhooks failed`, rejected[0]);
   }
+}
+
+// Backward compatible wrapper.
+export async function dispatchWebhookToChannelsLegacy(args: {
+  db: D1Database;
+  env: Record<string, unknown>;
+  channels: WebhookChannel[];
+  eventKey: string;
+  payload: unknown;
+}): Promise<void> {
+  const eventType =
+    args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
+      ? (args.payload as { event?: unknown }).event
+      : undefined;
+
+  return dispatchWebhookToChannels({
+    db: args.db,
+    env: args.env,
+    channels: args.channels,
+    eventType: typeof eventType === 'string' ? eventType : 'unknown',
+    eventKey: args.eventKey,
+    payload: args.payload,
+  });
 }

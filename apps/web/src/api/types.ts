@@ -259,10 +259,22 @@ export interface MonitorTestResult {
 
 export interface WebhookChannelConfig {
   url: string;
-  method?: string;
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
   headers?: Record<string, string>;
   timeout_ms?: number;
-  payload_type?: string;
+  payload_type?: 'json' | 'param' | 'x-www-form-urlencoded';
+  message_template?: string;
+  payload_template?: unknown;
+  enabled_events?: Array<
+    | 'monitor.down'
+    | 'monitor.up'
+    | 'incident.created'
+    | 'incident.updated'
+    | 'incident.resolved'
+    | 'maintenance.started'
+    | 'maintenance.ended'
+    | 'test.ping'
+  >;
   signing?: {
     enabled: boolean;
     secret_ref: string;
