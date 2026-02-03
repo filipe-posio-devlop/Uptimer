@@ -352,15 +352,18 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       }
 
       m.uptime_days = daily;
-      m.uptime_30d = {
-        range_start_at: rangeStart,
-        range_end_at: rangeEnd,
-        total_sec,
-        downtime_sec,
-        unknown_sec,
-        uptime_sec,
-        uptime_pct: total_sec === 0 ? 0 : (uptime_sec / total_sec) * 100,
-      };
+      m.uptime_30d =
+        total_sec === 0
+          ? null
+          : {
+              range_start_at: rangeStart,
+              range_end_at: rangeEnd,
+              total_sec,
+              downtime_sec,
+              unknown_sec,
+              uptime_sec,
+              uptime_pct: (uptime_sec / total_sec) * 100,
+            };
     }
   }
 
