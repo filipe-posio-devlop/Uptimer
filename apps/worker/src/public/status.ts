@@ -5,6 +5,7 @@ type PublicStatusMonitorRow = {
   name: string;
   type: string;
   interval_sec: number;
+  created_at: number;
   state_status: string | null;
   last_checked_at: number | null;
   last_latency_ms: number | null;
@@ -248,8 +249,6 @@ function toUptimePct(totalSec: number, uptimeSec: number): number | null {
 export async function computePublicStatusPayload(db: D1Database, now: number): Promise<PublicStatusResponse> {
   // 30d is computed from daily rollups and only includes full UTC days.
   const rangeEnd = utcDayStart(now);
-  const rangeStart = rangeEnd - UPTIME_DAYS * 86400;
-
   const { results } = await db
     .prepare(
       `
@@ -258,6 +257,7 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
         m.name,
         m.type,
         m.interval_sec,
+        m.created_at,
         s.status AS state_status,
         s.last_checked_at,
         s.last_latency_ms
@@ -270,6 +270,15 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     .all<PublicStatusMonitorRow>();
 
   const rawMonitors = results ?? [];
+  // Clamp the 30-day window to the earliest monitor creation time so we don't emit
+  // misleading 0%-uptime stats for periods before any monitor existed.
+  const earliestCreatedAt = rawMonitors.reduce(
+    (acc, m) => Math.min(acc, m.created_at),
+    Number.POSITIVE_INFINITY,
+  );
+  const rangeStart = Number.isFinite(earliestCreatedAt)
+    ? Math.max(rangeEnd - UPTIME_DAYS * 86400, earliestCreatedAt)
+    : rangeEnd - UPTIME_DAYS * 86400;
   const rawIds = rawMonitors.map((m) => m.id);
   const maintenanceMonitorIds = await listActiveMaintenanceMonitorIds(db, now, rawIds);
 
