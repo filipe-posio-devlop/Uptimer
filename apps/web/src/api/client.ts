@@ -24,6 +24,7 @@ import type {
   PublicUptimeOverviewResponse,
   PublicIncidentsResponse,
   PublicMaintenanceWindowsResponse,
+  PublicDayContextResponse,
   ResolveIncidentInput,
   StatusResponse,
   MonitorAnalyticsResponse,
@@ -354,6 +355,16 @@ export async function fetchPublicMaintenanceWindows(
   if (cursor) qs.set('cursor', String(cursor));
   const res = await fetch(`${API_BASE}/public/maintenance-windows?${qs.toString()}`);
   return handleResponse<PublicMaintenanceWindowsResponse>(res);
+}
+
+// Public API - Per-day context (maintenance + incidents for a monitor)
+export async function fetchPublicDayContext(
+  monitorId: number,
+  dayStartAt: number
+): Promise<PublicDayContextResponse> {
+  const qs = new URLSearchParams({ day_start_at: String(dayStartAt) });
+  const res = await fetch(`${API_BASE}/public/monitors/${monitorId}/day-context?${qs.toString()}`);
+  return handleResponse<PublicDayContextResponse>(res);
 }
 
 // Admin API - Incidents

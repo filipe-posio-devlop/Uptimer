@@ -603,6 +603,83 @@ publicRoutes.get('/maintenance-windows', async (c) => {
   });
 });
 
+publicRoutes.get('/monitors/:id/day-context', async (c) => {
+  const id = z.coerce.number().int().positive().parse(c.req.param('id'));
+  const dayStartAt = z.coerce.number().int().nonnegative().parse(c.req.query('day_start_at'));
+  const dayEndAt = dayStartAt + 86400;
+
+  const monitor = await c.env.DB.prepare(
+    `
+      SELECT id
+      FROM monitors
+      WHERE id = ?1 AND is_active = 1
+    `
+  )
+    .bind(id)
+    .first<{ id: number }>();
+
+  if (!monitor) {
+    throw new AppError(404, 'NOT_FOUND', 'Monitor not found');
+  }
+
+  const { results: maintenanceRows } = await c.env.DB.prepare(
+    `
+      SELECT mw.id, mw.title, mw.message, mw.starts_at, mw.ends_at, mw.created_at
+      FROM maintenance_windows mw
+      JOIN maintenance_window_monitors mwm ON mwm.maintenance_window_id = mw.id
+      WHERE mwm.monitor_id = ?1
+        AND mw.starts_at < ?3
+        AND mw.ends_at > ?2
+      ORDER BY mw.starts_at ASC, mw.id ASC
+      LIMIT 50
+    `
+  )
+    .bind(id, dayStartAt, dayEndAt)
+    .all<MaintenanceWindowRow>();
+
+  const maintenance = maintenanceRows ?? [];
+  const monitorIdsByWindowId = await listMaintenanceWindowMonitorIdsByWindowId(
+    c.env.DB,
+    maintenance.map((w) => w.id)
+  );
+
+  const { results: incidentRows } = await c.env.DB.prepare(
+    `
+      SELECT i.id, i.title, i.status, i.impact, i.message, i.started_at, i.resolved_at
+      FROM incidents i
+      JOIN incident_monitors im ON im.incident_id = i.id
+      WHERE im.monitor_id = ?1
+        AND i.started_at < ?3
+        AND (i.resolved_at IS NULL OR i.resolved_at > ?2)
+      ORDER BY i.started_at ASC, i.id ASC
+      LIMIT 50
+    `
+  )
+    .bind(id, dayStartAt, dayEndAt)
+    .all<IncidentRow>();
+
+  const incidents = incidentRows ?? [];
+  const updatesByIncidentId = await listIncidentUpdatesByIncidentId(
+    c.env.DB,
+    incidents.map((r) => r.id)
+  );
+  const monitorIdsByIncidentId = await listIncidentMonitorIdsByIncidentId(
+    c.env.DB,
+    incidents.map((r) => r.id)
+  );
+
+  return c.json({
+    day_start_at: dayStartAt,
+    day_end_at: dayEndAt,
+    maintenance_windows: maintenance.map((w) =>
+      maintenanceWindowRowToApi(w, monitorIdsByWindowId.get(w.id) ?? [])
+    ),
+    incidents: incidents.map((r) =>
+      incidentRowToApi(r, updatesByIncidentId.get(r.id) ?? [], monitorIdsByIncidentId.get(r.id) ?? [])
+    ),
+  });
+});
+
 publicRoutes.get('/monitors/:id/latency', async (c) => {
   const id = z.coerce.number().int().positive().parse(c.req.param('id'));
   const range = latencyRangeSchema.optional().default('24h').parse(c.req.query('range'));

@@ -200,6 +200,13 @@ export interface Outage {
   last_error: string | null;
 }
 
+export interface PublicDayContextResponse {
+  day_start_at: number;
+  day_end_at: number;
+  maintenance_windows: MaintenanceWindow[];
+  incidents: Incident[];
+}
+
 export interface MonitorOutagesResponse {
   range: AnalyticsRange;
   range_start_at: number;

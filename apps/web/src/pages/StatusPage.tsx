@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import { fetchLatency, fetchPublicIncidents, fetchPublicMaintenanceWindows, fetchPublicMonitorOutages, fetchStatus } from '../api/client';
+import { fetchLatency, fetchPublicDayContext, fetchPublicIncidents, fetchPublicMaintenanceWindows, fetchPublicMonitorOutages, fetchStatus } from '../api/client';
 import type { Incident, MaintenanceWindow, MonitorStatus, Outage, PublicMonitor, StatusResponse } from '../api/types';
 import { DayDowntimeModal } from '../components/DayDowntimeModal';
 import { Markdown } from '../components/Markdown';
@@ -405,8 +405,14 @@ export function StatusPage() {
   }, [derivedTitle]);
 
   const outagesQuery = useQuery({
-    queryKey: ['public-monitor-outages', selectedDay?.monitorId],
+    queryKey: ['public-monitor-outages', selectedDay?.monitorId, selectedDay?.dayStartAt],
     queryFn: () => fetchPublicMonitorOutages(selectedDay?.monitorId as number, { range: '30d', limit: 200 }),
+    enabled: selectedDay !== null,
+  });
+
+  const dayContextQuery = useQuery({
+    queryKey: ['public-day-context', selectedDay?.monitorId, selectedDay?.dayStartAt],
+    queryFn: () => fetchPublicDayContext(selectedDay?.monitorId as number, selectedDay?.dayStartAt as number),
     enabled: selectedDay !== null,
   });
 
@@ -743,6 +749,8 @@ export function StatusPage() {
         <DayDowntimeModal
           dayStartAt={selectedDay.dayStartAt}
           outages={currentDayOutages}
+          maintenanceWindows={dayContextQuery.data?.maintenance_windows ?? []}
+          incidents={dayContextQuery.data?.incidents ?? []}
           timeZone={timeZone}
           onClose={() => setSelectedDay(null)}
         />
@@ -757,6 +765,18 @@ export function StatusPage() {
       {selectedDay && outagesQuery.isError && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">Failed to load outages</div>
+        </div>
+      )}
+
+      {selectedDay && dayContextQuery.isLoading && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">Loading context…</div>
+        </div>
+      )}
+
+      {selectedDay && dayContextQuery.isError && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">Failed to load context</div>
         </div>
       )}
     </div>
