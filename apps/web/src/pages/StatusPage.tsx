@@ -448,10 +448,10 @@ export function StatusPage() {
       {/* Header */}
       <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
-          <Link to="/" className="flex flex-col leading-tight min-w-0">
-            <span className="font-bold text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
+          <Link to="/" className="flex flex-col justify-center min-w-0 min-h-9">
+            <span className="text-lg sm:text-xl font-bold leading-tight text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
             {data.site_description ? (
-              <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{data.site_description}</span>
+              <span className="mt-0.5 text-xs sm:text-sm leading-tight text-slate-500 dark:text-slate-400 truncate">{data.site_description}</span>
             ) : null}
           </Link>
           <div className="flex items-center gap-1">
