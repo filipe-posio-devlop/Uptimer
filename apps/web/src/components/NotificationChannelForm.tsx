@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import type { CreateNotificationChannelInput, NotificationChannel, WebhookChannelConfig } from '../api/types';
-import { Button } from './ui';
+import {
+  Button,
+  FIELD_HELP_CLASS,
+  FIELD_LABEL_CLASS,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  TEXTAREA_CLASS,
+} from './ui';
 
 interface NotificationChannelFormProps {
   channel?: NotificationChannel | undefined;
@@ -10,9 +17,10 @@ interface NotificationChannelFormProps {
   error?: string | undefined;
 }
 
-const inputClass =
-  'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
+const inputClass = INPUT_CLASS;
+const selectClass = SELECT_CLASS;
+const textareaClass = TEXTAREA_CLASS;
+const labelClass = FIELD_LABEL_CLASS;
 
 type NotificationEventType = NonNullable<WebhookChannelConfig['enabled_events']>[number];
 
@@ -200,7 +208,7 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
 
       <div>
         <label className={labelClass}>Method</label>
-        <select value={method} onChange={(e) => setMethod(toMethod(e.target.value))} className={inputClass}>
+        <select value={method} onChange={(e) => setMethod(toMethod(e.target.value))} className={selectClass}>
           <option value="POST">POST</option>
           <option value="PUT">PUT</option>
           <option value="PATCH">PATCH</option>
@@ -215,15 +223,13 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         <select
           value={payloadType}
           onChange={(e) => setPayloadType(toPayloadType(e.target.value))}
-          className={inputClass}
+          className={selectClass}
         >
           <option value="json">JSON</option>
           <option value="param">Query params</option>
           <option value="x-www-form-urlencoded">x-www-form-urlencoded</option>
         </select>
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Non-JSON types only support a flat key/value payload_template object.
-        </div>
+        <div className={FIELD_HELP_CLASS}>Non-JSON types only support a flat key/value payload_template object.</div>
       </div>
 
       <div>
@@ -243,16 +249,14 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         <textarea
           value={headersJson}
           onChange={(e) => setHeadersJson(e.target.value)}
-          className={inputClass}
+          className={textareaClass}
           rows={4}
           placeholder='{"Authorization":"Bearer $TOKEN"}'
         />
         {!headersParse.ok && (
           <div className="mt-1 text-xs text-red-600 dark:text-red-400">{headersParse.error}</div>
         )}
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Header values support magic variables like <code>{'{{message}}'}</code>.
-        </div>
+        <div className={FIELD_HELP_CLASS}>Header values support magic variables like <code>{'{{message}}'}</code>.</div>
       </div>
 
       <div>
@@ -260,14 +264,11 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         <textarea
           value={messageTemplate}
           onChange={(e) => setMessageTemplate(e.target.value)}
-          className={inputClass}
+          className={textareaClass}
           rows={3}
           placeholder="Monitor {{monitor.name}} changed to {{state.status}}\n$MSG"
         />
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Available vars include: <code>{'{{event}}'}</code>, <code>{'{{event_id}}'}</code>,
-          <code>{'{{monitor.name}}'}</code>, <code>{'{{state.error}}'}</code>, and <code>$MSG</code>.
-        </div>
+        <div className={FIELD_HELP_CLASS}>Available vars include: <code>{'{{event}}'}</code>, <code>{'{{event_id}}'}</code>, <code>{'{{monitor.name}}'}</code>, <code>{'{{state.error}}'}</code>, and <code>$MSG</code>.</div>
       </div>
 
       <div>
@@ -275,7 +276,7 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         <textarea
           value={payloadTemplateJson}
           onChange={(e) => setPayloadTemplateJson(e.target.value)}
-          className={inputClass}
+          className={textareaClass}
           rows={8}
           placeholder={
             payloadType === 'json'
@@ -286,9 +287,7 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
         {!payloadTemplateParse.ok && (
           <div className="mt-1 text-xs text-red-600 dark:text-red-400">{payloadTemplateParse.error}</div>
         )}
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Strings inside the template support <code>{'{{...}}'}</code> and <code>$MSG</code>.
-        </div>
+        <div className={FIELD_HELP_CLASS}>Strings inside the template support <code>{'{{...}}'}</code> and <code>$MSG</code>.</div>
       </div>
 
       <div>
@@ -308,7 +307,7 @@ export function NotificationChannelForm({ channel, onSubmit, onCancel, isLoading
             </label>
           ))}
         </div>
-        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Leave empty to send all events.</div>
+        <div className={FIELD_HELP_CLASS}>Leave empty to send all events.</div>
       </div>
 
       <div className="border-t border-slate-200 dark:border-slate-700 pt-4">

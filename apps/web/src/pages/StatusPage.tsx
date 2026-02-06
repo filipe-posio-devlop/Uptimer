@@ -9,7 +9,14 @@ import { HeartbeatBar } from '../components/HeartbeatBar';
 import { Markdown } from '../components/Markdown';
 import { UptimeBar30d } from '../components/UptimeBar30d';
 import { formatDateTime, formatTime } from '../utils/datetime';
-import { Badge, Card, StatusDot, ThemeToggle } from '../components/ui';
+import {
+  Badge,
+  Card,
+  MODAL_OVERLAY_CLASS,
+  MODAL_PANEL_CLASS,
+  StatusDot,
+  ThemeToggle,
+} from '../components/ui';
 
 type MaintenanceHistoryPreview = Pick<MaintenanceWindow, 'id' | 'title' | 'message' | 'starts_at' | 'ends_at' | 'monitor_ids'>;
 
@@ -213,11 +220,11 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
 
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in"
+      className={MODAL_OVERLAY_CLASS}
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up"
+        className={`${MODAL_PANEL_CLASS} sm:max-w-2xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-6">
@@ -287,7 +294,7 @@ function IncidentCard({ incident, onClick, timeZone }: { incident: Incident; onC
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-soft dark:shadow-none p-5 hover:shadow-soft-lg hover:border-slate-200 dark:hover:border-slate-600 transition-all"
+      className="ui-panel ui-panel-hover w-full rounded-xl p-5 text-left"
     >
       <div className="flex items-start justify-between gap-4 mb-2">
         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{incident.title}</h4>
@@ -327,11 +334,11 @@ function IncidentDetail({
 }) {
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in"
+      className={MODAL_OVERLAY_CLASS}
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up"
+        className={`${MODAL_PANEL_CLASS} sm:max-w-2xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-4 sm:mb-6">
@@ -420,15 +427,15 @@ function IncidentDetail({
 function StatusPageSkeleton() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
+      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
-          <div className="h-6 w-28 bg-slate-200 dark:bg-slate-700 rounded" />
-          <div className="h-8 w-20 bg-slate-200 dark:bg-slate-700 rounded-full" />
+          <div className="ui-skeleton h-6 w-28 rounded" />
+          <div className="ui-skeleton h-8 w-20 rounded-full" />
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="h-20 sm:h-24 bg-slate-200 dark:bg-slate-700 rounded-2xl mb-8 animate-pulse" />
+        <div className="ui-skeleton h-20 sm:h-24 rounded-2xl mb-8" />
 
         <section>
           <div className="h-6 w-24 bg-slate-200 dark:bg-slate-700 rounded mb-4" />
@@ -551,7 +558,7 @@ export function StatusPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
-      <header className="bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700">
+      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/95 backdrop-blur dark:border-slate-700/80 dark:bg-slate-800/95">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center">
           <Link to="/" className="flex flex-col justify-center min-w-0 min-h-9">
             <span className="text-lg sm:text-xl font-bold leading-tight text-slate-900 dark:text-slate-100 truncate">{siteTitle}</span>
@@ -585,6 +592,25 @@ export function StatusPage() {
       </div>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <section className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Card className="p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Monitors</div>
+            <div className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100 tabular-nums">{data.monitors.length}</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Down</div>
+            <div className="mt-2 text-2xl font-semibold text-red-600 dark:text-red-400 tabular-nums">{data.summary.down}</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Active Incidents</div>
+            <div className="mt-2 text-2xl font-semibold text-amber-600 dark:text-amber-400 tabular-nums">{activeIncidents.length}</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Active Maintenance</div>
+            <div className="mt-2 text-2xl font-semibold text-blue-600 dark:text-blue-400 tabular-nums">{data.maintenance_windows.active.length}</div>
+          </Card>
+        </section>
+
         {/* Maintenance Windows */}
         {(data.maintenance_windows.active.length > 0 || data.maintenance_windows.upcoming.length > 0) && (
           <section className="mb-10">

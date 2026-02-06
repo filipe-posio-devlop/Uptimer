@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { ApiError, fetchPublicMaintenanceWindows, fetchStatus } from '../api/client';
 import type { MaintenanceWindow } from '../api/types';
 import { Markdown } from '../components/Markdown';
-import { Card, ThemeToggle } from '../components/ui';
+import { Button, Card, ThemeToggle } from '../components/ui';
 import { formatDateTime } from '../utils/datetime';
 
 function formatError(err: unknown): string | undefined {
@@ -99,13 +99,13 @@ export function MaintenanceHistoryPage() {
 
             {nextCursor && (
               <div className="mt-4">
-                <button
+                <Button
                   onClick={() => setCursor(nextCursor)}
                   disabled={query.isFetching}
-                  className="px-3 py-2 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                  variant="secondary"
                 >
                   {query.isFetching ? 'Loading…' : 'Load more'}
-                </button>
+                </Button>
               </div>
             )}
           </>

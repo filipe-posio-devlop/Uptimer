@@ -1,11 +1,17 @@
 import { useMemo, useState } from 'react';
 import type { CreateIncidentUpdateInput, IncidentStatus } from '../api/types';
 import { Markdown } from './Markdown';
-import { Button } from './ui';
+import {
+  Button,
+  FIELD_LABEL_CLASS,
+  SELECT_CLASS,
+  TEXTAREA_CLASS,
+} from './ui';
 
 const statusOptions: Array<Exclude<IncidentStatus, 'resolved'>> = ['investigating', 'identified', 'monitoring'];
-const inputClass = 'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
+const selectClass = SELECT_CLASS;
+const textareaClass = TEXTAREA_CLASS;
+const labelClass = FIELD_LABEL_CLASS;
 
 export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
   onSubmit: (input: CreateIncidentUpdateInput) => void;
@@ -23,7 +29,7 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
     }}>
       <div>
         <label className={labelClass}>Status (optional)</label>
-        <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'> | '')} className={inputClass}>
+        <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'> | '')} className={selectClass}>
           <option value="">Keep current</option>
           {statusOptions.map((it) => <option key={it} value={it}>{it}</option>)}
         </select>
@@ -31,7 +37,7 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
 
       <div>
         <label className={labelClass}>Update message (Markdown)</label>
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} className={`${inputClass} font-mono`} placeholder="What changed?" required />
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} className={`${textareaClass} font-mono`} placeholder="What changed?" required />
       </div>
 
       {normalized && (

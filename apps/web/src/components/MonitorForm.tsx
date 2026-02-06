@@ -1,7 +1,14 @@
 import { useMemo, useState } from 'react';
 
 import type { AdminMonitor, CreateMonitorInput, MonitorType, PatchMonitorInput } from '../api/types';
-import { Button } from './ui';
+import {
+  Button,
+  FIELD_HELP_CLASS,
+  FIELD_LABEL_CLASS,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  TEXTAREA_CLASS,
+} from './ui';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD';
 
@@ -21,9 +28,10 @@ type EditProps = CommonProps & {
   onSubmit: (data: PatchMonitorInput) => void;
 };
 
-const inputClass =
-  'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
+const inputClass = INPUT_CLASS;
+const selectClass = SELECT_CLASS;
+const textareaClass = TEXTAREA_CLASS;
+const labelClass = FIELD_LABEL_CLASS;
 
 function safeJsonStringify(value: unknown): string {
   try {
@@ -273,7 +281,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
         <select
           value={type}
           onChange={(e) => setType(e.target.value as MonitorType)}
-          className={inputClass}
+          className={selectClass}
           disabled={!!monitor}
         >
           <option value="http">HTTP</option>
@@ -296,7 +304,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
       {type === 'http' && (
         <div>
           <label className={labelClass}>Method</label>
-          <select value={httpMethod} onChange={(e) => setHttpMethod(toHttpMethod(e.target.value))} className={inputClass}>
+          <select value={httpMethod} onChange={(e) => setHttpMethod(toHttpMethod(e.target.value))} className={selectClass}>
             <option value="GET">GET</option>
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
@@ -348,16 +356,14 @@ export function MonitorForm(props: CreateProps | EditProps) {
                 <textarea
                   value={httpHeadersJson}
                   onChange={(e) => setHttpHeadersJson(e.target.value)}
-                  className={`${inputClass} font-mono`}
+                  className={`${textareaClass} font-mono`}
                   rows={4}
                   placeholder='{"Authorization":"Bearer ..."}'
                 />
                 {!headersParse.ok && (
                   <div className="mt-1 text-xs text-red-600 dark:text-red-400">{headersParse.error}</div>
                 )}
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Tip: set <code>Content-Type</code> here if you use a request body.
-                </div>
+                <div className={FIELD_HELP_CLASS}>Tip: set <code>Content-Type</code> here if you use a request body.</div>
               </div>
 
               <div>
@@ -372,9 +378,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
                 {!expectedStatusParse.ok && (
                   <div className="mt-1 text-xs text-red-600 dark:text-red-400">{expectedStatusParse.error}</div>
                 )}
-                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Leave empty to accept 2xx.
-                </div>
+                <div className={FIELD_HELP_CLASS}>Leave empty to accept 2xx.</div>
               </div>
 
               <div>
@@ -382,7 +386,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
                 <textarea
                   value={httpBody}
                   onChange={(e) => setHttpBody(e.target.value)}
-                  className={`${inputClass} font-mono`}
+                  className={`${textareaClass} font-mono`}
                   rows={4}
                   placeholder={httpMethod === 'GET' || httpMethod === 'HEAD' ? '(usually empty for GET/HEAD)' : '...'}
                 />
@@ -411,9 +415,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
               </div>
 
               {monitor && (
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Clearing a field will reset it to default behavior.
-                </div>
+                <div className={FIELD_HELP_CLASS}>Clearing a field will reset it to default behavior.</div>
               )}
             </div>
           )}

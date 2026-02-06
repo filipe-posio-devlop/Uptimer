@@ -1,13 +1,21 @@
 import { useMemo, useState } from 'react';
 import type { CreateIncidentInput, IncidentImpact, IncidentStatus } from '../api/types';
 import { Markdown } from './Markdown';
-import { Button } from './ui';
+import {
+  Button,
+  FIELD_LABEL_CLASS,
+  INPUT_CLASS,
+  SELECT_CLASS,
+  TEXTAREA_CLASS,
+} from './ui';
 
 const impactOptions: IncidentImpact[] = ['none', 'minor', 'major', 'critical'];
 const statusOptions: Array<Exclude<IncidentStatus, 'resolved'>> = ['investigating', 'identified', 'monitoring'];
 
-const inputClass = 'w-full px-3 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-slate-400 dark:focus:border-slate-500 focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-500 transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
+const inputClass = INPUT_CLASS;
+const selectClass = SELECT_CLASS;
+const textareaClass = TEXTAREA_CLASS;
+const labelClass = FIELD_LABEL_CLASS;
 
 export function IncidentForm({
   monitors,
@@ -70,13 +78,13 @@ export function IncidentForm({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className={labelClass}>Impact</label>
-          <select value={impact} onChange={(e) => setImpact(e.target.value as IncidentImpact)} className={inputClass}>
+          <select value={impact} onChange={(e) => setImpact(e.target.value as IncidentImpact)} className={selectClass}>
             {impactOptions.map((it) => <option key={it} value={it}>{it}</option>)}
           </select>
         </div>
         <div>
           <label className={labelClass}>Status</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'>)} className={inputClass}>
+          <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'>)} className={selectClass}>
             {statusOptions.map((it) => <option key={it} value={it}>{it}</option>)}
           </select>
         </div>
@@ -84,7 +92,7 @@ export function IncidentForm({
 
       <div>
         <label className={labelClass}>Message (Markdown)</label>
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} className={`${inputClass} font-mono`} placeholder="Describe the issue..." />
+        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} className={`${textareaClass} font-mono`} placeholder="Describe the issue..." />
       </div>
 
       {normalized.length > 0 && (

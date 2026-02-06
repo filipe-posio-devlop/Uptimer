@@ -5,7 +5,14 @@ import { Link } from 'react-router-dom';
 import { ApiError, fetchPublicIncidents, fetchStatus } from '../api/client';
 import type { Incident } from '../api/types';
 import { Markdown } from '../components/Markdown';
-import { Badge, Card, ThemeToggle } from '../components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  MODAL_OVERLAY_CLASS,
+  MODAL_PANEL_CLASS,
+  ThemeToggle,
+} from '../components/ui';
 import { formatDateTime } from '../utils/datetime';
 
 function formatError(err: unknown): string | undefined {
@@ -27,7 +34,7 @@ function IncidentCard({
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-soft dark:shadow-none p-5 hover:shadow-soft-lg hover:border-slate-200 dark:hover:border-slate-600 transition-all"
+      className="ui-panel ui-panel-hover w-full text-left rounded-xl p-5"
     >
       <div className="flex items-start justify-between gap-4 mb-2">
         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{incident.title}</h4>
@@ -59,11 +66,11 @@ function IncidentDetail({
 }) {
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in"
+      className={MODAL_OVERLAY_CLASS}
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-2xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up"
+        className={`${MODAL_PANEL_CLASS} sm:max-w-2xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start mb-4 sm:mb-6">
@@ -78,14 +85,16 @@ function IncidentDetail({
               <Badge variant="info">{incident.status}</Badge>
             </div>
           </div>
-          <button
+          <Button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 rounded-full !p-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         <div className="space-y-2 sm:space-y-3 text-sm text-slate-600 dark:text-slate-300 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-700">
@@ -211,13 +220,13 @@ export function IncidentHistoryPage() {
 
             {nextCursor && (
               <div className="mt-4">
-                <button
+                <Button
                   onClick={() => setCursor(nextCursor)}
                   disabled={query.isFetching}
-                  className="px-3 py-2 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                  variant="secondary"
                 >
                   {query.isFetching ? 'Loading…' : 'Load more'}
-                </button>
+                </Button>
               </div>
             )}
           </>

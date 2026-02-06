@@ -44,7 +44,16 @@ import { MaintenanceWindowForm } from '../components/MaintenanceWindowForm';
 import { MonitorForm } from '../components/MonitorForm';
 import { NotificationChannelForm } from '../components/NotificationChannelForm';
 import { ResolveIncidentForm } from '../components/ResolveIncidentForm';
-import { Badge, Button, Card, ThemeToggle } from '../components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  MODAL_OVERLAY_CLASS,
+  MODAL_PANEL_CLASS,
+  TABLE_ACTION_BUTTON_CLASS,
+  ThemeToggle,
+  cn,
+} from '../components/ui';
 import { formatDateTime } from '../utils/datetime';
 
 type Tab = 'monitors' | 'notifications' | 'incidents' | 'maintenance' | 'settings';
@@ -86,6 +95,12 @@ type ChannelTestErrorState = {
   at: number;
   message: string;
 };
+
+const navActionClass =
+  'flex items-center justify-center h-9 rounded-lg px-3 text-sm transition-colors';
+
+const tabContainerClass =
+  'flex gap-1 rounded-xl border border-slate-200/70 bg-white/80 p-1 shadow-sm dark:border-slate-700 dark:bg-slate-800/80';
 
 const SETTINGS_ICON_PATH =
   'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z';
@@ -442,7 +457,7 @@ export function AdminDashboard() {
             <ThemeToggle />
             <Link
               to={ADMIN_ANALYTICS_PATH}
-              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
+              className={cn(navActionClass, 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100')}
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -456,7 +471,7 @@ export function AdminDashboard() {
             </Link>
             <Link
               to="/"
-              className="flex items-center justify-center h-9 text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors px-3 rounded-lg"
+              className={cn(navActionClass, 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100')}
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -470,7 +485,7 @@ export function AdminDashboard() {
             </Link>
             <button
               onClick={logout}
-              className="flex items-center justify-center h-9 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors px-3 rounded-lg"
+              className={cn(navActionClass, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
             >
               <svg className="w-5 h-5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -487,14 +502,19 @@ export function AdminDashboard() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-4 sm:pt-6">
-        <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
+        <div className={`${tabContainerClass} overflow-x-auto scrollbar-hide`}>
           {tabs.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               aria-label={t.label}
               title={t.label}
-              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${tab === t.key ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'}`}
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all sm:gap-2 sm:px-4 whitespace-nowrap',
+                tab === t.key
+                  ? 'bg-slate-900 text-white shadow-sm dark:bg-slate-100 dark:text-slate-900'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+              )}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={t.icon} />
@@ -650,7 +670,7 @@ export function AdminDashboard() {
                                   testMonitorMut.mutate(m.id);
                                 }}
                                 disabled={testMonitorMut.isPending}
-                                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
                               >
                                 {testingMonitorId === m.id ? 'Testing...' : 'Test'}
                               </button>
@@ -667,7 +687,7 @@ export function AdminDashboard() {
                                   resumeMonitorMut.isPending ||
                                   testingMonitorId === m.id
                                 }
-                                className="text-sm text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-amber-700 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 disabled:opacity-50')}
                               >
                                 {m.status === 'paused' ? 'Resume' : 'Pause'}
                               </button>
@@ -677,13 +697,13 @@ export function AdminDashboard() {
                                   updateMonitorMut.reset();
                                   setModal({ type: 'edit-monitor', monitor: m });
                                 }}
-                                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => confirm('Delete?') && deleteMonitorMut.mutate(m.id)}
-                                className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
                               >
                                 Delete
                               </button>
@@ -804,19 +824,19 @@ export function AdminDashboard() {
                                   testChannelMut.mutate(ch.id);
                                 }}
                                 disabled={testChannelMut.isPending}
-                                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
                               >
                                 {testingChannelId === ch.id ? 'Testing...' : 'Test'}
                               </button>
                               <button
                                 onClick={() => setModal({ type: 'edit-channel', channel: ch })}
-                                className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
                               >
                                 Edit
                               </button>
                               <button
                                 onClick={() => confirm(`Delete "${ch.name}"?`) && deleteChannelMut.mutate(ch.id)}
-                                className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
                               >
                                 Delete
                               </button>
@@ -1178,20 +1198,20 @@ export function AdminDashboard() {
                               <button
                                 onClick={() => setModal({ type: 'add-incident-update', incident: it })}
                                 disabled={it.status === 'resolved'}
-                                className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
                               >
                                 Update
                               </button>
                               <button
                                 onClick={() => setModal({ type: 'resolve-incident', incident: it })}
                                 disabled={it.status === 'resolved'}
-                                className="text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/20 dark:hover:text-emerald-300 disabled:opacity-50')}
                               >
                                 Resolve
                               </button>
                               <button
                                 onClick={() => confirm(`Delete "${it.title}"?`) && deleteIncidentMut.mutate(it.id)}
-                                className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
                               >
                                 Delete
                               </button>
@@ -1248,13 +1268,13 @@ export function AdminDashboard() {
                               <div className="flex items-center justify-end gap-1 sm:gap-0">
                                 <button
                                   onClick={() => setModal({ type: 'edit-maintenance', window: w })}
-                                  className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                  className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
                                 >
                                   Edit
                                 </button>
                                 <button
                                   onClick={() => confirm(`Delete "${w.title}"?`) && deleteMaintenanceMut.mutate(w.id)}
-                                  className="text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 sm:px-2.5 py-1.5 rounded-md transition-colors"
+                                  className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
                                 >
                                   Delete
                                 </button>
@@ -1273,8 +1293,8 @@ export function AdminDashboard() {
       </main>
 
       {modal.type !== 'none' && (
-        <div className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-md p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up">
+        <div className={MODAL_OVERLAY_CLASS}>
+          <div className={`${MODAL_PANEL_CLASS} sm:max-w-md p-5 sm:p-6`}>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-5">
               {modal.type === 'create-monitor' && 'Create Monitor'}
               {modal.type === 'edit-monitor' && 'Edit Monitor'}

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import type { Incident, MaintenanceWindow, Outage } from '../api/types';
-import { Button } from './ui';
+import { Button, MODAL_OVERLAY_CLASS, MODAL_PANEL_CLASS } from './ui';
 import { formatDate, formatTime } from '../utils/datetime';
 import { computeDayDowntimeIntervals, computeIntervalTotalSeconds } from './UptimeBar30d';
 
@@ -205,11 +205,11 @@ export function DayDowntimeModal({
 
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 dark:bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fade-in"
+      className={MODAL_OVERLAY_CLASS}
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-t-2xl sm:rounded-2xl shadow-soft-lg w-full sm:max-w-xl p-5 sm:p-6 max-h-[90vh] overflow-y-auto animate-slide-up"
+        className={`${MODAL_PANEL_CLASS} sm:max-w-xl p-5 sm:p-6`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 mb-4">
