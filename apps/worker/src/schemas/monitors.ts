@@ -3,6 +3,10 @@ import { z } from 'zod';
 
 import { validateHttpTarget, validateTcpTarget } from '../monitor/targets';
 
+const monitorGroupNameSchema = z.string().trim().min(1).max(64);
+const monitorGroupSortOrderSchema = z.number().int().min(-100_000).max(100_000);
+const monitorSortOrderSchema = z.number().int().min(-100_000).max(100_000);
+
 export const createMonitorInputSchema = z
   .object({
     name: z.string().min(1),
@@ -19,6 +23,9 @@ export const createMonitorInputSchema = z
     response_keyword: z.string().min(1).optional(),
     response_forbidden_keyword: z.string().min(1).optional(),
 
+    group_name: monitorGroupNameSchema.optional(),
+    group_sort_order: monitorGroupSortOrderSchema.optional(),
+    sort_order: monitorSortOrderSchema.optional(),
     is_active: z.boolean().optional(),
   })
   .superRefine((val, ctx) => {
@@ -60,6 +67,9 @@ export const patchMonitorInputSchema = z
     response_keyword: z.string().min(1).nullable().optional(),
     response_forbidden_keyword: z.string().min(1).nullable().optional(),
 
+    group_name: monitorGroupNameSchema.nullable().optional(),
+    group_sort_order: monitorGroupSortOrderSchema.optional(),
+    sort_order: monitorSortOrderSchema.optional(),
     is_active: z.boolean().optional(),
   })
   .refine((val) => Object.keys(val).length > 0, {
@@ -67,3 +77,60 @@ export const patchMonitorInputSchema = z
   });
 
 export type PatchMonitorInput = z.infer<typeof patchMonitorInputSchema>;
+
+export const reorderMonitorGroupsInputSchema = z
+  .object({
+    groups: z
+      .array(
+        z.object({
+          group_name: monitorGroupNameSchema.nullable(),
+          group_sort_order: monitorGroupSortOrderSchema,
+        }),
+      )
+      .min(1)
+      .max(200),
+  })
+  .superRefine((val, ctx) => {
+    const seen = new Set<string>();
+
+    for (let i = 0; i < val.groups.length; i += 1) {
+      const groupName = val.groups[i]?.group_name?.trim() ?? '';
+      const key = groupName.length > 0 ? `name:${groupName.toLowerCase()}` : 'ungrouped';
+
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['groups', i, 'group_name'],
+          message: 'Duplicate group_name is not allowed',
+        });
+      }
+
+      seen.add(key);
+    }
+  });
+
+export type ReorderMonitorGroupsInput = z.infer<typeof reorderMonitorGroupsInputSchema>;
+
+export const assignMonitorsToGroupInputSchema = z
+  .object({
+    monitor_ids: z.array(z.number().int().positive()).min(1).max(500),
+    group_name: monitorGroupNameSchema.nullable(),
+    group_sort_order: monitorGroupSortOrderSchema.optional(),
+  })
+  .superRefine((val, ctx) => {
+    const seen = new Set<number>();
+    for (let i = 0; i < val.monitor_ids.length; i += 1) {
+      const id = val.monitor_ids[i];
+      if (id === undefined) continue;
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['monitor_ids', i],
+          message: 'Duplicate monitor id is not allowed',
+        });
+      }
+      seen.add(id);
+    }
+  });
+
+export type AssignMonitorsToGroupInput = z.infer<typeof assignMonitorsToGroupInputSchema>;

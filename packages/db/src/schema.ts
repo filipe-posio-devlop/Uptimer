@@ -9,30 +9,44 @@ export type IncidentImpact = 'none' | 'minor' | 'major' | 'critical';
 export type NotificationChannelType = 'webhook';
 export type NotificationDeliveryStatus = 'success' | 'failed';
 
-export const monitors = sqliteTable('monitors', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(),
-  type: text('type').$type<MonitorType>().notNull(),
-  target: text('target').notNull(),
+export const monitors = sqliteTable(
+  'monitors',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    type: text('type').$type<MonitorType>().notNull(),
+    target: text('target').notNull(),
 
-  intervalSec: integer('interval_sec').notNull().default(60),
-  timeoutMs: integer('timeout_ms').notNull().default(10000),
+    intervalSec: integer('interval_sec').notNull().default(60),
+    timeoutMs: integer('timeout_ms').notNull().default(10000),
 
-  httpMethod: text('http_method'),
-  httpHeadersJson: text('http_headers_json'),
-  httpBody: text('http_body'),
-  expectedStatusJson: text('expected_status_json'),
-  responseKeyword: text('response_keyword'),
-  responseForbiddenKeyword: text('response_forbidden_keyword'),
+    httpMethod: text('http_method'),
+    httpHeadersJson: text('http_headers_json'),
+    httpBody: text('http_body'),
+    expectedStatusJson: text('expected_status_json'),
+    responseKeyword: text('response_keyword'),
+    responseForbiddenKeyword: text('response_forbidden_keyword'),
 
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-  createdAt: integer('created_at')
-    .notNull()
-    .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
-  updatedAt: integer('updated_at')
-    .notNull()
-    .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
-});
+    groupName: text('group_name'),
+    groupSortOrder: integer('group_sort_order').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+    createdAt: integer('created_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+    updatedAt: integer('updated_at')
+      .notNull()
+      .default(sql`(CAST(strftime('%s','now') AS INTEGER))`),
+  },
+  (t) => ({
+    groupSortIdx: index('idx_monitors_group_sort').on(
+      t.groupName,
+      t.groupSortOrder,
+      t.sortOrder,
+      t.id,
+    ),
+  })
+);
 
 export const monitorState = sqliteTable('monitor_state', {
   monitorId: integer('monitor_id').primaryKey(),

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
@@ -8,6 +8,8 @@ import {
   ApiError,
   fetchAdminMonitors,
   createMonitor,
+  assignMonitorsToGroup,
+  reorderMonitorGroups,
   updateMonitor,
   deleteMonitor,
   testMonitor,
@@ -96,6 +98,19 @@ type ChannelTestErrorState = {
   message: string;
 };
 
+type MonitorSortMode = 'configured' | 'name' | 'status' | 'last_checked_at' | 'created_at';
+type MonitorSortDirection = 'asc' | 'desc';
+type MonitorGroupMode = 'grouped' | 'flat';
+type MonitorGroupMeta = {
+  label: string;
+  count: number;
+  sortOrder: number;
+};
+
+const GROUP_ORDER_STEP = 10;
+const UNGROUPED_LABEL = 'Ungrouped';
+const ALL_GROUPS_FILTER = '__all_groups__';
+
 const navActionClass =
   'flex items-center justify-center h-10 rounded-lg px-3 text-base transition-colors';
 
@@ -156,6 +171,77 @@ function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
+function monitorGroupLabel(monitor: Pick<AdminMonitor, 'group_name'>): string {
+  const trimmed = monitor.group_name?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : UNGROUPED_LABEL;
+}
+
+function normalizeGroupInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.localeCompare(UNGROUPED_LABEL, undefined, { sensitivity: 'base' }) === 0) {
+    return null;
+  }
+  return trimmed;
+}
+
+function monitorStatusRank(status: AdminMonitor['status']): number {
+  switch (status) {
+    case 'down':
+      return 0;
+    case 'unknown':
+      return 1;
+    case 'maintenance':
+      return 2;
+    case 'paused':
+      return 3;
+    case 'up':
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function compareMonitors(
+  a: AdminMonitor,
+  b: AdminMonitor,
+  mode: MonitorSortMode,
+  direction: MonitorSortDirection,
+): number {
+  const dir = direction === 'asc' ? 1 : -1;
+  let cmp = 0;
+
+  switch (mode) {
+    case 'configured':
+      cmp = a.group_sort_order - b.group_sort_order;
+      if (cmp === 0) {
+        cmp = monitorGroupLabel(a).localeCompare(monitorGroupLabel(b), undefined, {
+          sensitivity: 'base',
+        });
+      }
+      if (cmp === 0) {
+        cmp = a.sort_order - b.sort_order;
+      }
+      break;
+    case 'name':
+      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      break;
+    case 'status':
+      cmp = monitorStatusRank(a.status) - monitorStatusRank(b.status);
+      break;
+    case 'last_checked_at':
+      cmp = (a.last_checked_at ?? 0) - (b.last_checked_at ?? 0);
+      break;
+    case 'created_at':
+      cmp = a.created_at - b.created_at;
+      break;
+    default:
+      cmp = 0;
+  }
+
+  if (cmp !== 0) return cmp * dir;
+  return (a.id - b.id) * dir;
+}
+
 export function AdminDashboard() {
   const { logout } = useAuth();
   const queryClient = useQueryClient();
@@ -167,6 +253,15 @@ export function AdminDashboard() {
   const [monitorTestError, setMonitorTestError] = useState<MonitorTestErrorState | null>(null);
   const [channelTestFeedback, setChannelTestFeedback] = useState<ChannelTestFeedback | null>(null);
   const [channelTestError, setChannelTestError] = useState<ChannelTestErrorState | null>(null);
+  const [monitorGroupReorderError, setMonitorGroupReorderError] = useState<string | null>(null);
+  const [monitorGroupManageError, setMonitorGroupManageError] = useState<string | null>(null);
+  const [selectedMonitorIds, setSelectedMonitorIds] = useState<number[]>([]);
+  const [bulkTargetGroup, setBulkTargetGroup] = useState<string>(UNGROUPED_LABEL);
+  const [bulkTargetGroupSortOrderInput, setBulkTargetGroupSortOrderInput] = useState<string>('');
+  const [monitorSortMode, setMonitorSortMode] = useState<MonitorSortMode>('configured');
+  const [monitorSortDirection, setMonitorSortDirection] = useState<MonitorSortDirection>('asc');
+  const [monitorGroupMode, setMonitorGroupMode] = useState<MonitorGroupMode>('grouped');
+  const [monitorGroupFilter, setMonitorGroupFilter] = useState<string>(ALL_GROUPS_FILTER);
 
   const monitorsQuery = useQuery({ queryKey: ['admin-monitors'], queryFn: () => fetchAdminMonitors() });
   const channelsQuery = useQuery({ queryKey: ['admin-channels'], queryFn: () => fetchNotificationChannels() });
@@ -265,19 +360,15 @@ export function AdminDashboard() {
 
   const createMonitorMut = useMutation({
     mutationFn: createMonitor,
-    onSuccess: (data) => {
-      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
-        monitors: [...(old?.monitors ?? []), data.monitor].sort((a, b) => a.id - b.id),
-      }));
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-monitors'] });
       closeModal();
     },
   });
   const updateMonitorMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Parameters<typeof updateMonitor>[1] }) => updateMonitor(id, data),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['admin-monitors'], (old: { monitors: AdminMonitor[] } | undefined) => ({
-        monitors: (old?.monitors ?? []).map((m) => (m.id === data.monitor.id ? data.monitor : m)),
-      }));
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin-monitors'] });
       closeModal();
     },
   });
@@ -448,6 +539,196 @@ export function AdminDashboard() {
     [monitorsQuery.data?.monitors],
   );
 
+  const monitorGroupMetaByLabel = useMemo(() => {
+    const byLabel = new Map<string, MonitorGroupMeta>();
+
+    for (const monitor of monitorsQuery.data?.monitors ?? []) {
+      const label = monitorGroupLabel(monitor);
+      const existing = byLabel.get(label);
+
+      if (!existing) {
+        byLabel.set(label, {
+          label,
+          count: 1,
+          sortOrder: monitor.group_sort_order,
+        });
+        continue;
+      }
+
+      existing.count += 1;
+      if (monitor.group_sort_order < existing.sortOrder) {
+        existing.sortOrder = monitor.group_sort_order;
+      }
+    }
+
+    return byLabel;
+  }, [monitorsQuery.data?.monitors]);
+
+  const orderedMonitorGroups = useMemo(() => {
+    return [...monitorGroupMetaByLabel.values()].sort((a, b) => {
+      const orderCmp = a.sortOrder - b.sortOrder;
+      if (orderCmp !== 0) return orderCmp;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+  }, [monitorGroupMetaByLabel]);
+
+  const monitorGroupIndexByLabel = useMemo(
+    () => new Map(orderedMonitorGroups.map((group, index) => [group.label, index] as const)),
+    [orderedMonitorGroups],
+  );
+
+  const monitorGroupLabels = useMemo(
+    () => orderedMonitorGroups.map((group) => group.label),
+    [orderedMonitorGroups],
+  );
+
+  useEffect(() => {
+    const available = new Set((monitorsQuery.data?.monitors ?? []).map((m) => m.id));
+    setSelectedMonitorIds((prev) => prev.filter((id) => available.has(id)));
+  }, [monitorsQuery.data?.monitors]);
+
+  useEffect(() => {
+    if (monitorGroupFilter === ALL_GROUPS_FILTER) return;
+    if (monitorGroupLabels.includes(monitorGroupFilter)) return;
+    setMonitorGroupFilter(ALL_GROUPS_FILTER);
+  }, [monitorGroupFilter, monitorGroupLabels]);
+
+  const moveMonitorGroupMut = useMutation({
+    mutationFn: async ({
+      groupLabel,
+      direction,
+    }: {
+      groupLabel: string;
+      direction: -1 | 1;
+    }) => {
+      const fromIndex = monitorGroupIndexByLabel.get(groupLabel);
+      if (fromIndex === undefined) return;
+
+      const toIndex = fromIndex + direction;
+      if (toIndex < 0 || toIndex >= orderedMonitorGroups.length) return;
+
+      const reordered = [...orderedMonitorGroups];
+      const [movedGroup] = reordered.splice(fromIndex, 1);
+      if (!movedGroup) return;
+      reordered.splice(toIndex, 0, movedGroup);
+
+      const updates = reordered
+        .map((group, index) => ({
+          groupName: group.label === UNGROUPED_LABEL ? null : group.label,
+          nextSortOrder: index * GROUP_ORDER_STEP,
+        }))
+        .filter((item, index) => item.nextSortOrder !== reordered[index]?.sortOrder);
+
+      if (updates.length === 0) return;
+
+      await reorderMonitorGroups({
+        groups: updates.map((item) => ({
+          group_name: item.groupName,
+          group_sort_order: item.nextSortOrder,
+        })),
+      });
+    },
+    onMutate: () => {
+      setMonitorGroupReorderError(null);
+    },
+    onError: (err) => {
+      setMonitorGroupReorderError(formatError(err) ?? 'Failed to reorder groups');
+    },
+    onSuccess: async () => {
+      setMonitorGroupReorderError(null);
+      await queryClient.invalidateQueries({ queryKey: ['admin-monitors'] });
+    },
+  });
+
+  const assignSelectedMonitorsMut = useMutation({
+    mutationFn: async () => {
+      const monitorIds = [...new Set(selectedMonitorIds)];
+      if (monitorIds.length === 0) return;
+
+      const targetGroupName = normalizeGroupInput(bulkTargetGroup);
+      const sortOrderTrimmed = bulkTargetGroupSortOrderInput.trim();
+      const parsedSortOrder =
+        sortOrderTrimmed.length > 0 ? Number.parseInt(sortOrderTrimmed, 10) : undefined;
+      const groupSortOrder =
+        parsedSortOrder !== undefined && Number.isFinite(parsedSortOrder) ? parsedSortOrder : undefined;
+
+      await assignMonitorsToGroup({
+        monitor_ids: monitorIds,
+        group_name: targetGroupName,
+        ...(groupSortOrder !== undefined ? { group_sort_order: groupSortOrder } : {}),
+      });
+    },
+    onMutate: () => {
+      setMonitorGroupManageError(null);
+    },
+    onError: (err) => {
+      setMonitorGroupManageError(formatError(err) ?? 'Failed to move selected monitors');
+    },
+    onSuccess: async () => {
+      setMonitorGroupManageError(null);
+      setSelectedMonitorIds([]);
+      setBulkTargetGroupSortOrderInput('');
+      await queryClient.invalidateQueries({ queryKey: ['admin-monitors'] });
+    },
+  });
+
+  const sortedMonitors = useMemo(() => {
+    const list = [...(monitorsQuery.data?.monitors ?? [])];
+    const dir = monitorSortDirection === 'asc' ? 1 : -1;
+
+    list.sort((a, b) => {
+      if (monitorGroupMode === 'grouped') {
+        const groupA = monitorGroupLabel(a);
+        const groupB = monitorGroupLabel(b);
+        const groupOrderA = monitorGroupMetaByLabel.get(groupA)?.sortOrder ?? 0;
+        const groupOrderB = monitorGroupMetaByLabel.get(groupB)?.sortOrder ?? 0;
+        const groupOrderCmp = groupOrderA - groupOrderB;
+        if (groupOrderCmp !== 0) return groupOrderCmp;
+
+        const groupCmp = groupA.localeCompare(groupB, undefined, {
+          sensitivity: 'base',
+        });
+        if (groupCmp !== 0) return groupCmp;
+
+        if (monitorSortMode === 'configured') {
+          const configuredCmp = a.sort_order - b.sort_order;
+          if (configuredCmp !== 0) return configuredCmp * dir;
+          return (a.id - b.id) * dir;
+        }
+      }
+
+      return compareMonitors(a, b, monitorSortMode, monitorSortDirection);
+    });
+    return list;
+  }, [
+    monitorGroupMetaByLabel,
+    monitorGroupMode,
+    monitorSortDirection,
+    monitorSortMode,
+    monitorsQuery.data?.monitors,
+  ]);
+
+  const filteredMonitors = useMemo(() => {
+    if (monitorGroupFilter === ALL_GROUPS_FILTER) return sortedMonitors;
+    return sortedMonitors.filter((monitor) => monitorGroupLabel(monitor) === monitorGroupFilter);
+  }, [monitorGroupFilter, sortedMonitors]);
+
+  const monitorCountsByGroup = useMemo(() => {
+    return new Map(orderedMonitorGroups.map((group) => [group.label, group.count] as const));
+  }, [orderedMonitorGroups]);
+
+  const selectedMonitorIdSet = useMemo(() => new Set(selectedMonitorIds), [selectedMonitorIds]);
+
+  const visibleMonitorIds = useMemo(
+    () => filteredMonitors.map((monitor) => monitor.id),
+    [filteredMonitors],
+  );
+
+  const allVisibleMonitorsSelected =
+    visibleMonitorIds.length > 0 && visibleMonitorIds.every((id) => selectedMonitorIdSet.has(id));
+
+  const someVisibleMonitorsSelected = visibleMonitorIds.some((id) => selectedMonitorIdSet.has(id));
+
   const channelNameById = useMemo(
     () => new Map((channelsQuery.data?.notification_channels ?? []).map((ch) => [ch.id, ch.name] as const)),
     [channelsQuery.data?.notification_channels],
@@ -608,118 +889,397 @@ export function AdminDashboard() {
             ) : !monitorsQuery.data?.monitors.length ? (
               <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">No monitors yet</Card>
             ) : (
-              <Card className="overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[900px]">
-                    <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
-                      <tr>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Name</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Type</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Target</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Last Check</th>
-                        <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Last Error</th>
-                        <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                      {monitorsQuery.data.monitors.map((m) => (
-                        <tr key={m.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                          <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{m.name}</td>
-                          <td className="px-3 sm:px-4 py-3">
-                            <Badge variant="info">{m.type}</Badge>
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-sm text-slate-500 dark:text-slate-400 truncate max-w-[200px]">{m.target}</td>
-                          <td className="px-3 sm:px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant={
-                                  m.status === 'up'
-                                    ? 'up'
-                                    : m.status === 'down'
-                                      ? 'down'
-                                      : m.status === 'maintenance'
-                                        ? 'maintenance'
-                                        : m.status === 'paused'
-                                          ? 'paused'
-                                          : 'unknown'
-                                }
-                              >
-                                {m.status}
-                              </Badge>
-                              {!m.is_active && <Badge variant="unknown">inactive</Badge>}
-                            </div>
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            {m.last_checked_at ? (
-                              <>
-                                {formatDateTime(m.last_checked_at, settings?.site_timezone)}
-                                {m.last_latency_ms !== null ? ` (${m.last_latency_ms}ms)` : ''}
-                              </>
-                            ) : (
-                              '-'
-                            )}
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 max-w-[260px]">
-                            <span className="block truncate" title={m.last_error ?? undefined}>
-                              {m.last_error ? m.last_error : '-'}
-                            </span>
-                          </td>
-                          <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1 sm:gap-0">
+              <div className="grid gap-4 lg:grid-cols-[18rem,minmax(0,1fr)] 2xl:grid-cols-[21rem,minmax(0,1fr)]">
+                <div className="order-2 space-y-4 self-start lg:order-1 lg:sticky lg:top-6">
+                  <Card className="p-3 sm:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Group Manager</h3>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {orderedMonitorGroups.length} groups
+                      </span>
+                    </div>
+                    <div className="mt-3 space-y-2 lg:max-h-[42vh] lg:overflow-y-auto lg:pr-1">
+                      <button
+                        type="button"
+                        onClick={() => setMonitorGroupFilter(ALL_GROUPS_FILTER)}
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-colors',
+                          monitorGroupFilter === ALL_GROUPS_FILTER
+                            ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700',
+                        )}
+                      >
+                        <span>All groups</span>
+                        <span className="tabular-nums">{sortedMonitors.length}</span>
+                      </button>
+                      {orderedMonitorGroups.map((group, index) => {
+                        const active = monitorGroupFilter === group.label;
+                        const isFirst = index === 0;
+                        const isLast = index === orderedMonitorGroups.length - 1;
+
+                        return (
+                          <div key={group.label} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMonitorGroupFilter(group.label);
+                                setBulkTargetGroup(group.label);
+                              }}
+                              className={cn(
+                                'flex min-w-0 flex-1 items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs transition-colors',
+                                active
+                                  ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700',
+                              )}
+                            >
+                              <span className="truncate">{group.label}</span>
+                              <span className="ml-2 tabular-nums">
+                                {group.count} · {group.sortOrder}
+                              </span>
+                            </button>
+                            <div className="flex shrink-0 items-center gap-1">
                               <button
-                                onClick={() => {
-                                  setTestingMonitorId(m.id);
-                                  setMonitorTestFeedback(null);
-                                  setMonitorTestError(null);
-                                  testMonitorMut.mutate(m.id);
-                                }}
-                                disabled={testMonitorMut.isPending}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
+                                type="button"
+                                title="Move group up"
+                                onClick={() => moveMonitorGroupMut.mutate({ groupLabel: group.label, direction: -1 })}
+                                disabled={isFirst || moveMonitorGroupMut.isPending}
+                                className="rounded border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                               >
-                                {testingMonitorId === m.id ? 'Testing...' : 'Test'}
+                                ↑
                               </button>
                               <button
-                                onClick={() => {
-                                  if (m.status === 'paused') {
-                                    resumeMonitorMut.mutate(m.id);
-                                  } else {
-                                    pauseMonitorMut.mutate(m.id);
-                                  }
-                                }}
-                                disabled={
-                                  pauseMonitorMut.isPending ||
-                                  resumeMonitorMut.isPending ||
-                                  testingMonitorId === m.id
-                                }
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-amber-700 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 disabled:opacity-50')}
+                                type="button"
+                                title="Move group down"
+                                onClick={() => moveMonitorGroupMut.mutate({ groupLabel: group.label, direction: 1 })}
+                                disabled={isLast || moveMonitorGroupMut.isPending}
+                                className="rounded border border-slate-300 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                               >
-                                {m.status === 'paused' ? 'Resume' : 'Pause'}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  createMonitorMut.reset();
-                                  updateMonitorMut.reset();
-                                  setModal({ type: 'edit-monitor', monitor: m });
-                                }}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => confirm('Delete?') && deleteMonitorMut.mutate(m.id)}
-                                className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
-                              >
-                                Delete
+                                ↓
                               </button>
                             </div>
-                          </td>
-                        </tr>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      Tip: click a group to filter table rows and prefill side actions.
+                    </div>
+                  </Card>
+
+                  <Card className="p-3 sm:p-4">
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Bulk Assign</h3>
+                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                      Selected monitors: {selectedMonitorIds.length}
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400">Target group</label>
+                        <input
+                          type="text"
+                          value={bulkTargetGroup}
+                          onChange={(e) => setBulkTargetGroup(e.target.value)}
+                          list="monitor-groups-datalist"
+                          className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                          placeholder={UNGROUPED_LABEL}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-slate-500 dark:text-slate-400">Target group order</label>
+                        <input
+                          type="number"
+                          value={bulkTargetGroupSortOrderInput}
+                          onChange={(e) => setBulkTargetGroupSortOrderInput(e.target.value)}
+                          min={-100000}
+                          max={100000}
+                          className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 focus:border-slate-400 focus:outline-none dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                          placeholder="keep current"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        disabled={selectedMonitorIds.length === 0 || assignSelectedMonitorsMut.isPending}
+                        onClick={() => assignSelectedMonitorsMut.mutate()}
+                        className="w-full"
+                      >
+                        {assignSelectedMonitorsMut.isPending
+                          ? 'Applying...'
+                          : `Move ${selectedMonitorIds.length} selected`}
+                      </Button>
+                      {selectedMonitorIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedMonitorIds([])}
+                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+                        >
+                          Clear selection
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                      Leave empty or use &quot;{UNGROUPED_LABEL}&quot; to ungroup.
+                    </div>
+                  </Card>
+
+                  {monitorGroupReorderError && (
+                    <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
+                      <div className="text-sm text-red-700 dark:text-red-300">{monitorGroupReorderError}</div>
+                    </Card>
+                  )}
+                  {monitorGroupManageError && (
+                    <Card className="p-3 border-red-200 bg-red-50/70 dark:bg-red-500/10 dark:border-red-400/30">
+                      <div className="text-sm text-red-700 dark:text-red-300">{monitorGroupManageError}</div>
+                    </Card>
+                  )}
+
+                  <datalist id="monitor-groups-datalist">
+                    <option value={UNGROUPED_LABEL} />
+                    {monitorGroupLabels
+                      .filter((label) => label !== UNGROUPED_LABEL)
+                      .map((label) => (
+                        <option key={label} value={label} />
                       ))}
-                    </tbody>
-                  </table>
+                  </datalist>
                 </div>
-              </Card>
+
+                <div className="order-1 min-w-0 space-y-4 lg:order-2">
+                  <Card className="p-3 sm:p-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="order-1 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        <label className="text-xs text-slate-500 dark:text-slate-400">
+                          <span className="mb-1 block">Group</span>
+                          <select
+                            value={monitorGroupMode}
+                            onChange={(e) => setMonitorGroupMode(e.target.value as MonitorGroupMode)}
+                            className="ui-select mt-1 block w-full"
+                          >
+                            <option value="grouped">By group</option>
+                            <option value="flat">Flat list</option>
+                          </select>
+                        </label>
+                        <label className="text-xs text-slate-500 dark:text-slate-400">
+                          <span className="mb-1 block">Sort</span>
+                          <select
+                            value={monitorSortMode}
+                            onChange={(e) => setMonitorSortMode(e.target.value as MonitorSortMode)}
+                            className="ui-select mt-1 block w-full"
+                          >
+                            <option value="configured">Configured order</option>
+                            <option value="status">Status</option>
+                            <option value="name">Name</option>
+                            <option value="last_checked_at">Last check</option>
+                            <option value="created_at">Created time</option>
+                          </select>
+                        </label>
+                        <label className="text-xs text-slate-500 dark:text-slate-400 sm:col-span-2 xl:col-span-1">
+                          <span className="mb-1 block">Direction</span>
+                          <select
+                            value={monitorSortDirection}
+                            onChange={(e) => setMonitorSortDirection(e.target.value as MonitorSortDirection)}
+                            className="ui-select mt-1 block w-full"
+                          >
+                            <option value="asc">Asc</option>
+                            <option value="desc">Desc</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="order-2 text-xs text-slate-500 dark:text-slate-400 xl:text-right">
+                        Showing {filteredMonitors.length} of {sortedMonitors.length} monitors
+                        {monitorGroupFilter !== ALL_GROUPS_FILTER && (
+                          <>
+                            {' '}
+                            in <span className="font-semibold text-slate-700 dark:text-slate-200">{monitorGroupFilter}</span>
+                          </>
+                        )}
+                        {' · '}selected {selectedMonitorIds.length}
+                      </div>
+                    </div>
+                  </Card>
+
+                  {filteredMonitors.length === 0 ? (
+                    <Card className="p-6 sm:p-8 text-center text-slate-500 dark:text-slate-400">
+                      No monitors in this group.
+                    </Card>
+                  ) : (
+                    <Card className="overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[860px] lg:min-w-[980px]">
+                          <thead className="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700">
+                            <tr>
+                              <th className="px-3 sm:px-4 py-3 text-left">
+                                <input
+                                  type="checkbox"
+                                  checked={allVisibleMonitorsSelected}
+                                  ref={(el) => {
+                                    if (el) el.indeterminate = !allVisibleMonitorsSelected && someVisibleMonitorsSelected;
+                                  }}
+                                  onChange={() => {
+                                    if (allVisibleMonitorsSelected) {
+                                      setSelectedMonitorIds((prev) =>
+                                        prev.filter((id) => !visibleMonitorIds.includes(id)),
+                                      );
+                                      return;
+                                    }
+                                    setSelectedMonitorIds((prev) => {
+                                      const next = new Set(prev);
+                                      for (const id of visibleMonitorIds) next.add(id);
+                                      return [...next];
+                                    });
+                                  }}
+                                  aria-label="Select visible monitors"
+                                  className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                />
+                              </th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Name</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Group</th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">Group Order</th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide lg:table-cell">Monitor Order</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Type</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Target</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Status</th>
+                              <th className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Last Check</th>
+                              <th className="hidden px-3 sm:px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide xl:table-cell">Last Error</th>
+                              <th className="px-3 sm:px-4 py-3 text-right text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            {filteredMonitors.map((m, index) => {
+                              const groupLabel = monitorGroupLabel(m);
+                              const prevMonitor = index > 0 ? filteredMonitors[index - 1] : null;
+                              const prevGroupLabel = prevMonitor ? monitorGroupLabel(prevMonitor) : null;
+                              const showGroupHeader = monitorGroupMode === 'grouped' && groupLabel !== prevGroupLabel;
+                              const groupMeta = monitorGroupMetaByLabel.get(groupLabel);
+
+                              return (
+                                <Fragment key={m.id}>
+                                  {showGroupHeader && (
+                                    <tr className="bg-slate-100/70 dark:bg-slate-800/80">
+                                      <td
+                                        colSpan={11}
+                                        className="px-3 sm:px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300"
+                                      >
+                                        {groupLabel} ({monitorCountsByGroup.get(groupLabel) ?? 0}) · order{' '}
+                                        {groupMeta?.sortOrder ?? 0}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  <tr className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                                    <td className="px-3 sm:px-4 py-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedMonitorIdSet.has(m.id)}
+                                        onChange={() => {
+                                          setSelectedMonitorIds((prev) => {
+                                            if (prev.includes(m.id)) return prev.filter((id) => id !== m.id);
+                                            return [...prev, m.id];
+                                          });
+                                        }}
+                                        aria-label={`Select ${m.name}`}
+                                        className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                      />
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">{m.name}</td>
+                                    <td className="px-3 sm:px-4 py-3 text-xs text-slate-600 dark:text-slate-300">{groupLabel}</td>
+                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">{m.group_sort_order}</td>
+                                    <td className="hidden px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums lg:table-cell">{m.sort_order}</td>
+                                    <td className="px-3 sm:px-4 py-3">
+                                      <Badge variant="info">{m.type}</Badge>
+                                    </td>
+                                    <td className="max-w-[160px] truncate px-3 py-3 text-sm text-slate-500 dark:text-slate-400 sm:max-w-[220px] sm:px-4">{m.target}</td>
+                                    <td className="px-3 sm:px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <Badge
+                                          variant={
+                                            m.status === 'up'
+                                              ? 'up'
+                                              : m.status === 'down'
+                                                ? 'down'
+                                                : m.status === 'maintenance'
+                                                  ? 'maintenance'
+                                                  : m.status === 'paused'
+                                                    ? 'paused'
+                                                    : 'unknown'
+                                          }
+                                        >
+                                          {m.status}
+                                        </Badge>
+                                        {!m.is_active && <Badge variant="unknown">inactive</Badge>}
+                                      </div>
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                      {m.last_checked_at ? (
+                                        <>
+                                          {formatDateTime(m.last_checked_at, settings?.site_timezone)}
+                                          {m.last_latency_ms !== null ? ` (${m.last_latency_ms}ms)` : ''}
+                                        </>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </td>
+                                    <td className="hidden max-w-[260px] px-3 sm:px-4 py-3 text-xs text-slate-500 dark:text-slate-400 xl:table-cell">
+                                      <span className="block truncate" title={m.last_error ?? undefined}>
+                                        {m.last_error ? m.last_error : '-'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
+                                      <div className="flex items-center justify-end gap-1 sm:gap-0">
+                                        <button
+                                          onClick={() => {
+                                            setTestingMonitorId(m.id);
+                                            setMonitorTestFeedback(null);
+                                            setMonitorTestError(null);
+                                            testMonitorMut.mutate(m.id);
+                                          }}
+                                          disabled={testMonitorMut.isPending}
+                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-blue-600 hover:bg-blue-50 hover:text-blue-800 dark:text-blue-400 dark:hover:bg-blue-900/20 dark:hover:text-blue-300 disabled:opacity-50')}
+                                        >
+                                          {testingMonitorId === m.id ? 'Testing...' : 'Test'}
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (m.status === 'paused') {
+                                              resumeMonitorMut.mutate(m.id);
+                                            } else {
+                                              pauseMonitorMut.mutate(m.id);
+                                            }
+                                          }}
+                                          disabled={
+                                            pauseMonitorMut.isPending ||
+                                            resumeMonitorMut.isPending ||
+                                            testingMonitorId === m.id
+                                          }
+                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-amber-700 hover:bg-amber-50 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/20 dark:hover:text-amber-200 disabled:opacity-50')}
+                                        >
+                                          {m.status === 'paused' ? 'Resume' : 'Pause'}
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            createMonitorMut.reset();
+                                            updateMonitorMut.reset();
+                                            setModal({ type: 'edit-monitor', monitor: m });
+                                          }}
+                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200')}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          onClick={() => confirm('Delete?') && deleteMonitorMut.mutate(m.id)}
+                                          className={cn(TABLE_ACTION_BUTTON_CLASS, 'text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:hover:text-red-300')}
+                                        >
+                                          Delete
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                </Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -882,7 +1442,7 @@ export function AdminDashboard() {
                     patchSettingsMut.mutate({ uptime_rating_level: next });
                   }}
                   disabled={settingsQuery.isLoading || !settingsDraft}
-                  className="border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                  className="ui-select w-full sm:w-[21rem] disabled:opacity-50"
                 >
                   <option value={1}>Level 1 - Personal / Hobby</option>
                   <option value={2}>Level 2 - Basic Business / Content</option>
@@ -1127,7 +1687,7 @@ export function AdminDashboard() {
                         patchSettingsMut.mutate({ admin_default_overview_range: next });
                       }}
                       disabled={settingsQuery.isLoading || !settingsDraft}
-                      className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                      className="ui-select w-full disabled:opacity-50"
                     >
                       <option value="24h">24h</option>
                       <option value="7d">7d</option>
@@ -1146,7 +1706,7 @@ export function AdminDashboard() {
                         patchSettingsMut.mutate({ admin_default_monitor_range: next });
                       }}
                       disabled={settingsQuery.isLoading || !settingsDraft}
-                      className="w-full border dark:border-slate-600 rounded px-3 py-2 text-sm bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 disabled:opacity-50"
+                      className="ui-select w-full disabled:opacity-50"
                     >
                       <option value="24h">24h</option>
                       <option value="7d">7d</option>
@@ -1320,6 +1880,7 @@ export function AdminDashboard() {
                     onCancel={closeModal}
                     isLoading={createMonitorMut.isPending}
                     error={formatError(createMonitorMut.error)}
+                    groupOptions={monitorGroupLabels.filter((label) => label !== UNGROUPED_LABEL)}
                   />
                 )}
                 {modal.type === 'edit-monitor' && (
@@ -1329,6 +1890,7 @@ export function AdminDashboard() {
                     onCancel={closeModal}
                     isLoading={updateMonitorMut.isPending}
                     error={formatError(updateMonitorMut.error)}
+                    groupOptions={monitorGroupLabels.filter((label) => label !== UNGROUPED_LABEL)}
                   />
                 )}
               </>

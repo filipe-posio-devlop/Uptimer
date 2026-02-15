@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import {
+  asc,
   eq,
   expectedStatusJsonSchema,
   getDb,
@@ -37,7 +38,12 @@ import {
   createMaintenanceWindowInputSchema,
   patchMaintenanceWindowInputSchema,
 } from '../schemas/maintenance-windows';
-import { createMonitorInputSchema, patchMonitorInputSchema } from '../schemas/monitors';
+import {
+  assignMonitorsToGroupInputSchema,
+  createMonitorInputSchema,
+  patchMonitorInputSchema,
+  reorderMonitorGroupsInputSchema,
+} from '../schemas/monitors';
 import {
   createNotificationChannelInputSchema,
   patchNotificationChannelInputSchema,
@@ -76,10 +82,142 @@ function queuePublicStatusSnapshotRefresh(c: { env: Env; executionCtx: Execution
   );
 }
 
+function normalizeMonitorGroupName(groupName: string | null | undefined): string | null {
+  const trimmed = groupName?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function findGroupSortOrder(db: D1Database, groupName: string | null): Promise<number | null> {
+  const sql =
+    groupName === null
+      ? `
+      SELECT group_sort_order
+      FROM monitors
+      WHERE group_name IS NULL OR trim(group_name) = ''
+      ORDER BY group_sort_order ASC, id ASC
+      LIMIT 1
+    `
+      : `
+      SELECT group_sort_order
+      FROM monitors
+      WHERE group_name IS NOT NULL
+        AND trim(group_name) <> ''
+        AND lower(trim(group_name)) = lower(?1)
+      ORDER BY group_sort_order ASC, id ASC
+      LIMIT 1
+    `;
+
+  const stmt = db.prepare(sql);
+  const row =
+    groupName === null
+      ? await stmt.first<{ group_sort_order: number }>()
+      : await stmt.bind(groupName).first<{ group_sort_order: number }>();
+
+  return row?.group_sort_order ?? null;
+}
+
+async function syncGroupSortOrder(
+  db: D1Database,
+  groupName: string | null,
+  groupSortOrder: number,
+  updatedAt: number,
+  skipMonitorId?: number,
+): Promise<void> {
+  const binds: (string | number)[] = [groupSortOrder, updatedAt];
+  const scopeSql =
+    groupName === null
+      ? `(group_name IS NULL OR trim(group_name) = '')`
+      : `(group_name IS NOT NULL AND trim(group_name) <> '' AND lower(trim(group_name)) = lower(?))`;
+
+  if (groupName !== null) {
+    binds.push(groupName);
+  }
+
+  const skipSql = skipMonitorId !== undefined ? ` AND id <> ?` : '';
+  if (skipMonitorId !== undefined) {
+    binds.push(skipMonitorId);
+  }
+
+  await db
+    .prepare(
+      `
+      UPDATE monitors
+      SET group_sort_order = ?,
+          updated_at = ?
+      WHERE ${scopeSql}${skipSql}
+    `,
+    )
+    .bind(...binds)
+    .run();
+}
+
+type MonitorGroupReorderEntry = {
+  groupName: string | null;
+  groupSortOrder: number;
+};
+
+function normalizeMonitorGroupReorderEntries(
+  input: { group_name: string | null; group_sort_order: number }[],
+): MonitorGroupReorderEntry[] {
+  return input.map((group) => ({
+    groupName: normalizeMonitorGroupName(group.group_name),
+    groupSortOrder: group.group_sort_order,
+  }));
+}
+
+function buildGroupReorderUpdate(
+  groups: MonitorGroupReorderEntry[],
+  updatedAt: number,
+): { sql: string; binds: (string | number)[] } {
+  const binds: (string | number)[] = [];
+  const sortCaseClauses: string[] = [];
+  const whereClauses: string[] = [];
+  let idx = 1;
+
+  for (const group of groups) {
+    if (group.groupName === null) {
+      const sortIdx = idx;
+      idx += 1;
+      binds.push(group.groupSortOrder);
+      sortCaseClauses.push(`WHEN group_name IS NULL OR trim(group_name) = '' THEN ?${sortIdx}`);
+      whereClauses.push(`(group_name IS NULL OR trim(group_name) = '')`);
+      continue;
+    }
+
+    const nameIdx = idx;
+    idx += 1;
+    const sortIdx = idx;
+    idx += 1;
+
+    binds.push(group.groupName, group.groupSortOrder);
+
+    sortCaseClauses.push(`WHEN lower(trim(group_name)) = lower(?${nameIdx}) THEN ?${sortIdx}`);
+    whereClauses.push(`lower(trim(group_name)) = lower(?${nameIdx})`);
+  }
+
+  const updatedAtIdx = idx;
+  binds.push(updatedAt);
+
+  const sql = `
+    UPDATE monitors
+    SET
+      group_sort_order = CASE
+        ${sortCaseClauses.join('\n        ')}
+        ELSE group_sort_order
+      END,
+      updated_at = ?${updatedAtIdx}
+    WHERE ${whereClauses.join(' OR ')}
+  `;
+
+  return { sql, binds };
+}
+
 function monitorRowToApi(
   row: typeof monitors.$inferSelect,
   state?: typeof monitorState.$inferSelect | null,
 ) {
+  const groupName = normalizeMonitorGroupName(row.groupName);
+
   return {
     id: row.id,
     name: row.name,
@@ -97,6 +235,9 @@ function monitorRowToApi(
     }),
     response_keyword: row.responseKeyword,
     response_forbidden_keyword: row.responseForbiddenKeyword,
+    group_name: groupName,
+    group_sort_order: row.groupSortOrder,
+    sort_order: row.sortOrder,
     is_active: row.isActive,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -117,11 +258,69 @@ adminRoutes.get('/monitors', async (c) => {
     .select({ monitor: monitors, state: monitorState })
     .from(monitors)
     .leftJoin(monitorState, eq(monitorState.monitorId, monitors.id))
-    .orderBy(monitors.id)
+    .orderBy(asc(monitors.groupSortOrder), asc(monitors.groupName), asc(monitors.sortOrder), asc(monitors.id))
     .limit(limit)
     .all();
 
   return c.json({ monitors: rows.map((r) => monitorRowToApi(r.monitor, r.state)) });
+});
+
+adminRoutes.post('/monitors/groups/reorder', async (c) => {
+  const rawBody = await c.req.json().catch(() => {
+    throw new AppError(400, 'INVALID_ARGUMENT', 'Invalid JSON body');
+  });
+  const input = reorderMonitorGroupsInputSchema.parse(rawBody);
+  const now = Math.floor(Date.now() / 1000);
+
+  const groups = normalizeMonitorGroupReorderEntries(input.groups);
+  const { sql, binds } = buildGroupReorderUpdate(groups, now);
+  const result = await c.env.DB.prepare(sql).bind(...binds).run();
+
+  queuePublicStatusSnapshotRefresh(c);
+
+  return c.json({
+    updated_groups: groups.length,
+    affected_monitors: result.meta.changes ?? 0,
+  });
+});
+
+adminRoutes.post('/monitors/groups/assign', async (c) => {
+  const rawBody = await c.req.json().catch(() => {
+    throw new AppError(400, 'INVALID_ARGUMENT', 'Invalid JSON body');
+  });
+  const input = assignMonitorsToGroupInputSchema.parse(rawBody);
+  const now = Math.floor(Date.now() / 1000);
+
+  const monitorIds = [...new Set(input.monitor_ids)];
+  const targetGroupName = normalizeMonitorGroupName(input.group_name);
+  const targetGroupSortOrder =
+    input.group_sort_order ?? ((await findGroupSortOrder(c.env.DB, targetGroupName)) ?? 0);
+
+  const placeholders = monitorIds.map(() => '?').join(', ');
+  const result = await c.env.DB
+    .prepare(
+      `
+      UPDATE monitors
+      SET group_name = ?,
+          group_sort_order = ?,
+          updated_at = ?
+      WHERE id IN (${placeholders})
+    `,
+    )
+    .bind(targetGroupName, targetGroupSortOrder, now, ...monitorIds)
+    .run();
+
+  if (input.group_sort_order !== undefined) {
+    await syncGroupSortOrder(c.env.DB, targetGroupName, targetGroupSortOrder, now);
+  }
+
+  queuePublicStatusSnapshotRefresh(c);
+
+  return c.json({
+    group_name: targetGroupName,
+    group_sort_order: targetGroupSortOrder,
+    updated_monitors: result.meta.changes ?? 0,
+  });
 });
 
 adminRoutes.get('/settings/uptime-rating', async (c) => {
@@ -169,6 +368,10 @@ adminRoutes.post('/monitors', async (c) => {
 
   const db = getDb(c.env);
   const now = Math.floor(Date.now() / 1000);
+  const groupName = normalizeMonitorGroupName(input.group_name);
+  const groupSortOrder =
+    input.group_sort_order ??
+    ((await findGroupSortOrder(c.env.DB, groupName)) ?? 0);
 
   const inserted = await db
     .insert(monitors)
@@ -196,12 +399,19 @@ adminRoutes.post('/monitors', async (c) => {
       responseKeyword: input.type === 'http' ? (input.response_keyword ?? null) : null,
       responseForbiddenKeyword: input.type === 'http' ? (input.response_forbidden_keyword ?? null) : null,
 
+      groupName,
+      groupSortOrder,
+      sortOrder: input.sort_order ?? 0,
       isActive: input.is_active ?? true,
       createdAt: now,
       updatedAt: now,
     })
     .returning()
     .get();
+
+  if (input.group_sort_order !== undefined) {
+    await syncGroupSortOrder(c.env.DB, groupName, groupSortOrder, now, inserted.id);
+  }
 
   queuePublicStatusSnapshotRefresh(c);
 
@@ -250,6 +460,12 @@ adminRoutes.patch('/monitors/:id', async (c) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const nextGroupName =
+    input.group_name !== undefined ? normalizeMonitorGroupName(input.group_name) : normalizeMonitorGroupName(existing.groupName);
+  const nextGroupSortOrder =
+    input.group_sort_order !== undefined
+      ? input.group_sort_order
+      : ((await findGroupSortOrder(c.env.DB, nextGroupName)) ?? existing.groupSortOrder);
 
   const updated = await db
     .update(monitors)
@@ -277,6 +493,9 @@ adminRoutes.patch('/monitors/:id', async (c) => {
         input.response_forbidden_keyword !== undefined
           ? input.response_forbidden_keyword
           : existing.responseForbiddenKeyword,
+      groupName: nextGroupName,
+      groupSortOrder: nextGroupSortOrder,
+      sortOrder: input.sort_order ?? existing.sortOrder,
       isActive: input.is_active ?? existing.isActive,
       updatedAt: now,
     })
@@ -286,6 +505,10 @@ adminRoutes.patch('/monitors/:id', async (c) => {
 
   if (!updated) {
     throw new AppError(500, 'INTERNAL', 'Failed to update monitor');
+  }
+
+  if (input.group_sort_order !== undefined) {
+    await syncGroupSortOrder(c.env.DB, nextGroupName, nextGroupSortOrder, now, updated.id);
   }
 
   queuePublicStatusSnapshotRefresh(c);

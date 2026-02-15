@@ -25,6 +25,10 @@ import type {
   PublicIncidentsResponse,
   PublicMaintenanceWindowsResponse,
   PublicDayContextResponse,
+  AssignMonitorsToGroupInput,
+  AssignMonitorsToGroupResult,
+  ReorderMonitorGroupsInput,
+  ReorderMonitorGroupsResult,
   ResolveIncidentInput,
   StatusResponse,
   MonitorAnalyticsResponse,
@@ -306,6 +310,28 @@ export async function testMonitor(id: number): Promise<MonitorTestResult> {
     headers: getAuthHeaders(),
   });
   return handleResponse<MonitorTestResult>(res);
+}
+
+export async function reorderMonitorGroups(
+  input: ReorderMonitorGroupsInput,
+): Promise<ReorderMonitorGroupsResult> {
+  const res = await fetch(`${API_BASE}/admin/monitors/groups/reorder`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<ReorderMonitorGroupsResult>(res);
+}
+
+export async function assignMonitorsToGroup(
+  input: AssignMonitorsToGroupInput,
+): Promise<AssignMonitorsToGroupResult> {
+  const res = await fetch(`${API_BASE}/admin/monitors/groups/assign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(input),
+  });
+  return handleResponse<AssignMonitorsToGroupResult>(res);
 }
 
 // Admin API - Notification Channels

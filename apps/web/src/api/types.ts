@@ -69,6 +69,9 @@ export interface PublicMonitor {
   id: number;
   name: string;
   type: MonitorType;
+  group_name: string | null;
+  group_sort_order: number;
+  sort_order: number;
   uptime_rating_level: UptimeRatingLevel;
   status: MonitorStatus;
   is_stale: boolean;
@@ -248,6 +251,9 @@ export interface AdminMonitor {
   name: string;
   type: MonitorType;
   target: string;
+  group_name: string | null;
+  group_sort_order: number;
+  sort_order: number;
   interval_sec: number;
   timeout_ms: number;
   http_method: string | null;
@@ -271,6 +277,9 @@ export interface CreateMonitorInput {
   name: string;
   type: MonitorType;
   target: string;
+  group_name?: string;
+  group_sort_order?: number;
+  sort_order?: number;
   interval_sec?: number;
   timeout_ms?: number;
   http_method?: string;
@@ -285,6 +294,9 @@ export interface CreateMonitorInput {
 export interface PatchMonitorInput {
   name?: string;
   target?: string;
+  group_name?: string | null;
+  group_sort_order?: number;
+  sort_order?: number;
   interval_sec?: number;
   timeout_ms?: number;
   http_method?: string;
@@ -294,6 +306,30 @@ export interface PatchMonitorInput {
   response_keyword?: string | null;
   response_forbidden_keyword?: string | null;
   is_active?: boolean;
+}
+
+export interface ReorderMonitorGroupsInput {
+  groups: Array<{
+    group_name: string | null;
+    group_sort_order: number;
+  }>;
+}
+
+export interface ReorderMonitorGroupsResult {
+  updated_groups: number;
+  affected_monitors: number;
+}
+
+export interface AssignMonitorsToGroupInput {
+  monitor_ids: number[];
+  group_name: string | null;
+  group_sort_order?: number;
+}
+
+export interface AssignMonitorsToGroupResult {
+  group_name: string | null;
+  group_sort_order: number;
+  updated_monitors: number;
 }
 
 export interface MonitorTestResult {

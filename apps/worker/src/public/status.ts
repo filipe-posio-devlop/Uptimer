@@ -6,6 +6,9 @@ type PublicStatusMonitorRow = {
   id: number;
   name: string;
   type: string;
+  group_name: string | null;
+  group_sort_order: number;
+  sort_order: number;
   interval_sec: number;
   created_at: number;
   state_status: string | null;
@@ -430,6 +433,9 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
         m.id,
         m.name,
         m.type,
+        m.group_name,
+        m.group_sort_order,
+        m.sort_order,
         m.interval_sec,
         m.created_at,
         s.status AS state_status,
@@ -438,7 +444,16 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       FROM monitors m
       LEFT JOIN monitor_state s ON s.monitor_id = m.id
       WHERE m.is_active = 1
-      ORDER BY m.id
+      ORDER BY
+        m.group_sort_order ASC,
+        lower(
+          CASE
+            WHEN m.group_name IS NULL OR trim(m.group_name) = '' THEN 'Ungrouped'
+            ELSE trim(m.group_name)
+          END
+        ) ASC,
+        m.sort_order ASC,
+        m.id ASC
     `,
     )
     .all<PublicStatusMonitorRow>();
@@ -476,6 +491,9 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
       id: r.id,
       name: r.name,
       type: r.type === 'tcp' ? 'tcp' : 'http',
+      group_name: r.group_name?.trim() ? r.group_name.trim() : null,
+      group_sort_order: r.group_sort_order,
+      sort_order: r.sort_order,
       uptime_rating_level: uptimeRatingLevel,
       status,
       is_stale: isStale,

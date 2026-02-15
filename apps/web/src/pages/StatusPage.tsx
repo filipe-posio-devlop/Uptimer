@@ -56,6 +56,11 @@ function getBannerConfig(status: BannerStatus) {
   return configs[status] || configs.unknown;
 }
 
+function monitorGroupLabel(groupName: string | null | undefined): string {
+  const trimmed = groupName?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : 'Ungrouped';
+}
+
 function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () => void }) {
   const { data, isLoading } = useQuery({
     queryKey: ['latency', monitorId],
@@ -374,6 +379,18 @@ export function StatusPage() {
       }
     : null;
 
+  const groupedMonitors = useMemo(() => {
+    const groups = new Map<string, StatusResponse['monitors']>();
+    for (const monitor of statusQuery.data?.monitors ?? []) {
+      const key = monitorGroupLabel(monitor.group_name);
+      const list = groups.get(key) ?? [];
+      list.push(monitor);
+      groups.set(key, list);
+    }
+
+    return [...groups.entries()].map(([name, monitors]) => ({ name, monitors }));
+  }, [statusQuery.data?.monitors]);
+
   if (statusQuery.isLoading) {
     return <StatusPageSkeleton />;
   }
@@ -542,15 +559,25 @@ export function StatusPage() {
         {/* Monitors */}
         <section>
           <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3">Services</h3>
-          <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">
-            {data.monitors.map((monitor) => (
-              <MonitorCard
-                key={monitor.id}
-                monitor={monitor}
-                timeZone={timeZone}
-                onSelect={() => setSelectedMonitorId(monitor.id)}
-                onDayClick={(dayStartAt) => setSelectedDay({ monitorId: monitor.id, dayStartAt })}
-              />
+          <div className="space-y-5">
+            {groupedMonitors.map((group) => (
+              <div key={group.name}>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-semibold text-slate-600 dark:text-slate-300">{group.name}</h4>
+                  <span className="text-xs text-slate-400 dark:text-slate-500">{group.monitors.length}</span>
+                </div>
+                <div className="grid gap-2.5 sm:gap-3 md:grid-cols-2">
+                  {group.monitors.map((monitor) => (
+                    <MonitorCard
+                      key={monitor.id}
+                      monitor={monitor}
+                      timeZone={timeZone}
+                      onSelect={() => setSelectedMonitorId(monitor.id)}
+                      onDayClick={(dayStartAt) => setSelectedDay({ monitorId: monitor.id, dayStartAt })}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
           {data.monitors.length === 0 && (

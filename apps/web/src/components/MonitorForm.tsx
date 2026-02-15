@@ -16,6 +16,7 @@ type CommonProps = {
   onCancel: () => void;
   isLoading?: boolean;
   error?: string | undefined;
+  groupOptions?: string[];
 };
 
 type CreateProps = CommonProps & {
@@ -153,8 +154,17 @@ function parseExpectedStatusInput(
 
 export function MonitorForm(props: CreateProps | EditProps) {
   const monitor = props.monitor;
+  const groupOptions = useMemo(
+    () =>
+      [...new Set((props.groupOptions ?? []).map((name) => name.trim()).filter((name) => name.length > 0))]
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    [props.groupOptions],
+  );
 
   const [name, setName] = useState(monitor?.name ?? '');
+  const [groupName, setGroupName] = useState(monitor?.group_name ?? '');
+  const [groupSortOrder, setGroupSortOrder] = useState(monitor?.group_sort_order ?? 0);
+  const [sortOrder, setSortOrder] = useState(monitor?.sort_order ?? 0);
   const [type, setType] = useState<MonitorType>(monitor?.type ?? 'http');
   const [target, setTarget] = useState(monitor?.target ?? '');
   const [intervalSec, setIntervalSec] = useState(monitor?.interval_sec ?? 60);
@@ -199,15 +209,21 @@ export function MonitorForm(props: CreateProps | EditProps) {
     e.preventDefault();
     if (!canSubmit) return;
 
+    const normalizedGroupName = groupName.trim();
     const base = {
       name: name.trim(),
       target: target.trim(),
+      group_sort_order: groupSortOrder,
+      sort_order: sortOrder,
       interval_sec: intervalSec,
       timeout_ms: timeoutMs,
     };
 
     if (monitor) {
-      const data: PatchMonitorInput = { ...base };
+      const data: PatchMonitorInput = {
+        ...base,
+        group_name: normalizedGroupName.length > 0 ? normalizedGroupName : null,
+      };
 
       if (type === 'http') {
         data.http_method = httpMethod;
@@ -234,6 +250,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
     }
 
     const data: CreateMonitorInput = { ...base, type };
+    if (normalizedGroupName.length > 0) data.group_name = normalizedGroupName;
 
     if (type === 'http') {
       data.http_method = httpMethod;
@@ -274,6 +291,57 @@ export function MonitorForm(props: CreateProps | EditProps) {
       <div>
         <label className={labelClass}>Name</label>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className={labelClass}>Group (optional)</label>
+          <input
+            type="text"
+            value={groupName}
+            onChange={(e) => setGroupName(e.target.value)}
+            className={inputClass}
+            placeholder="e.g. Core Services"
+            list="monitor-group-options"
+          />
+          {groupOptions.length > 0 && (
+            <datalist id="monitor-group-options">
+              {groupOptions.map((group) => (
+                <option key={group} value={group} />
+              ))}
+            </datalist>
+          )}
+        </div>
+        <div>
+          <label className={labelClass}>Group Order</label>
+          <input
+            type="number"
+            value={groupSortOrder}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              setGroupSortOrder(Number.isFinite(n) ? n : 0);
+            }}
+            min={-100000}
+            max={100000}
+            className={inputClass}
+          />
+          <div className={FIELD_HELP_CLASS}>Lower groups appear first.</div>
+        </div>
+        <div>
+          <label className={labelClass}>Sort Order</label>
+          <input
+            type="number"
+            value={sortOrder}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              setSortOrder(Number.isFinite(n) ? n : 0);
+            }}
+            min={-100000}
+            max={100000}
+            className={inputClass}
+          />
+          <div className={FIELD_HELP_CLASS}>Lower values appear first.</div>
+        </div>
       </div>
 
       <div>
