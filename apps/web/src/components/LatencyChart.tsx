@@ -1,5 +1,6 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import type { LatencyPoint } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import { useTheme } from '../app/ThemeContext';
 
 interface LatencyChartProps {
@@ -12,6 +13,7 @@ function formatTime(timestamp: number): string {
 }
 
 export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
+  const { t } = useI18n();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
@@ -25,7 +27,7 @@ export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-[200px] text-slate-500 dark:text-slate-400">
-        No latency data available
+        {t('common.no_latency_data')}
       </div>
     );
   }
@@ -49,7 +51,7 @@ export function LatencyChart({ points, height = 200 }: LatencyChartProps) {
         />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleString()}
-          formatter={(v: number) => [`${v}ms`, 'Latency']}
+          formatter={(v: number) => [`${v}ms`, t('admin_analytics.latency')]}
           contentStyle={{
             backgroundColor: isDark ? '#1e293b' : '#ffffff',
             borderColor: isDark ? '#334155' : '#e2e8f0',

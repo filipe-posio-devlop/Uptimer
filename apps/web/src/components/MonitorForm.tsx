@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import type { AdminMonitor, CreateMonitorInput, MonitorType, PatchMonitorInput } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import {
   Button,
   FIELD_HELP_CLASS,
@@ -33,6 +34,7 @@ const inputClass = INPUT_CLASS;
 const selectClass = SELECT_CLASS;
 const textareaClass = TEXTAREA_CLASS;
 const labelClass = FIELD_LABEL_CLASS;
+type TranslateFn = ReturnType<typeof useI18n>['t'];
 
 function safeJsonStringify(value: unknown): string {
   try {
@@ -71,6 +73,7 @@ function hasAdvancedHttpConfig(monitor: AdminMonitor | undefined): boolean {
 
 function parseHeadersJson(
   text: string,
+  t: TranslateFn,
 ): { ok: true; value: Record<string, string> } | { ok: false; error: string } {
   const trimmed = text.trim();
   if (!trimmed) return { ok: true as const, value: {} };
@@ -81,17 +84,17 @@ function parseHeadersJson(
   } catch {
     return {
       ok: false as const,
-      error: 'Headers must be valid JSON (e.g. {"Authorization":"Bearer ..."})',
+      error: t('monitor_form.error_headers_invalid_json'),
     };
   }
 
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false as const, error: 'Headers must be a JSON object of string values' };
+    return { ok: false as const, error: t('monitor_form.error_headers_must_object') };
   }
 
   for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
     if (typeof v !== 'string') {
-      return { ok: false as const, error: `Header "${k}" must be a string` };
+      return { ok: false as const, error: t('monitor_form.error_header_value_string', { key: k }) };
     }
   }
 
@@ -100,13 +103,14 @@ function parseHeadersJson(
 
 function parseExpectedStatusInput(
   text: string,
+  t: TranslateFn,
 ): { ok: true; value: number[] | null } | { ok: false; error: string } {
   const trimmed = text.trim();
   if (!trimmed) return { ok: true as const, value: null };
 
   const parseList = (parts: string[]) => {
     if (parts.length === 0) {
-      return { ok: false as const, error: 'Expected status codes cannot be empty' };
+      return { ok: false as const, error: t('monitor_form.error_expected_status_empty') };
     }
 
     const out: number[] = [];
@@ -115,7 +119,7 @@ function parseExpectedStatusInput(
       if (!Number.isFinite(n) || n < 100 || n > 599) {
         return {
           ok: false as const,
-          error: `Invalid status code: "${p}" (must be an integer 100-599)`,
+          error: t('monitor_form.error_expected_status_invalid', { value: p }),
         };
       }
       out.push(n);
@@ -132,12 +136,12 @@ function parseExpectedStatusInput(
     } catch {
       return {
         ok: false as const,
-        error: 'Expected status codes must be a JSON array like [200,204] or a list like "200, 204"',
+        error: t('monitor_form.error_expected_status_json_or_list'),
       };
     }
 
     if (!Array.isArray(parsed)) {
-      return { ok: false as const, error: 'Expected status codes must be an array' };
+      return { ok: false as const, error: t('monitor_form.error_expected_status_must_array') };
     }
 
     const parts = parsed.map((x) => String(x));
@@ -153,6 +157,7 @@ function parseExpectedStatusInput(
 }
 
 export function MonitorForm(props: CreateProps | EditProps) {
+  const { t } = useI18n();
   const monitor = props.monitor;
   const groupOptions = useMemo(
     () =>
@@ -194,10 +199,10 @@ export function MonitorForm(props: CreateProps | EditProps) {
     monitor?.type === 'http' ? (monitor.response_forbidden_keyword ?? '') : '',
   );
 
-  const headersParse = useMemo(() => parseHeadersJson(httpHeadersJson), [httpHeadersJson]);
+  const headersParse = useMemo(() => parseHeadersJson(httpHeadersJson, t), [httpHeadersJson, t]);
   const expectedStatusParse = useMemo(
-    () => parseExpectedStatusInput(expectedStatusInput),
-    [expectedStatusInput],
+    () => parseExpectedStatusInput(expectedStatusInput, t),
+    [expectedStatusInput, t],
   );
 
   const canSubmit =
@@ -289,19 +294,19 @@ export function MonitorForm(props: CreateProps | EditProps) {
         </div>
       )}
       <div>
-        <label className={labelClass}>Name</label>
+        <label className={labelClass}>{t('monitor_form.name')}</label>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} required />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className={labelClass}>Group (optional)</label>
+          <label className={labelClass}>{t('monitor_form.group_optional')}</label>
           <input
             type="text"
             value={groupName}
             onChange={(e) => setGroupName(e.target.value)}
             className={inputClass}
-            placeholder="e.g. Core Services"
+            placeholder={t('monitor_form.group_placeholder')}
             list="monitor-group-options"
           />
           {groupOptions.length > 0 && (
@@ -313,7 +318,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
           )}
         </div>
         <div>
-          <label className={labelClass}>Group Order</label>
+          <label className={labelClass}>{t('monitor_form.group_order')}</label>
           <input
             type="number"
             value={groupSortOrder}
@@ -325,10 +330,10 @@ export function MonitorForm(props: CreateProps | EditProps) {
             max={100000}
             className={inputClass}
           />
-          <div className={FIELD_HELP_CLASS}>Lower groups appear first.</div>
+          <div className={FIELD_HELP_CLASS}>{t('monitor_form.group_order_help')}</div>
         </div>
         <div>
-          <label className={labelClass}>Sort Order</label>
+          <label className={labelClass}>{t('monitor_form.sort_order')}</label>
           <input
             type="number"
             value={sortOrder}
@@ -340,30 +345,36 @@ export function MonitorForm(props: CreateProps | EditProps) {
             max={100000}
             className={inputClass}
           />
-          <div className={FIELD_HELP_CLASS}>Lower values appear first.</div>
+          <div className={FIELD_HELP_CLASS}>{t('monitor_form.sort_order_help')}</div>
         </div>
       </div>
 
       <div>
-        <label className={labelClass}>Type</label>
+        <label className={labelClass}>{t('monitor_form.type')}</label>
         <select
           value={type}
           onChange={(e) => setType(e.target.value as MonitorType)}
           className={selectClass}
           disabled={!!monitor}
         >
-          <option value="http">HTTP</option>
-          <option value="tcp">TCP</option>
+          <option value="http">{t('monitor_form.type_http')}</option>
+          <option value="tcp">{t('monitor_form.type_tcp')}</option>
         </select>
       </div>
 
       <div>
-        <label className={labelClass}>{type === 'http' ? 'URL' : 'Host:Port'}</label>
+        <label className={labelClass}>
+          {type === 'http' ? t('monitor_form.target_url') : t('monitor_form.target_host_port')}
+        </label>
         <input
           type="text"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          placeholder={type === 'http' ? 'https://example.com' : 'example.com:443'}
+          placeholder={
+            type === 'http'
+              ? t('monitor_form.target_url_placeholder')
+              : t('monitor_form.target_host_port_placeholder')
+          }
           className={inputClass}
           required
         />
@@ -371,7 +382,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
 
       {type === 'http' && (
         <div>
-          <label className={labelClass}>Method</label>
+          <label className={labelClass}>{t('monitor_form.method')}</label>
           <select value={httpMethod} onChange={(e) => setHttpMethod(toHttpMethod(e.target.value))} className={selectClass}>
             <option value="GET">GET</option>
             <option value="POST">POST</option>
@@ -385,7 +396,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className={labelClass}>Interval (sec)</label>
+          <label className={labelClass}>{t('monitor_form.interval_sec')}</label>
           <input
             type="number"
             value={intervalSec}
@@ -395,7 +406,7 @@ export function MonitorForm(props: CreateProps | EditProps) {
           />
         </div>
         <div>
-          <label className={labelClass}>Timeout (ms)</label>
+          <label className={labelClass}>{t('monitor_form.timeout_ms')}</label>
           <input
             type="number"
             value={timeoutMs}
@@ -414,76 +425,80 @@ export function MonitorForm(props: CreateProps | EditProps) {
               checked={showAdvancedHttp}
               onChange={(e) => setShowAdvancedHttp(e.target.checked)}
             />
-            <span>Advanced HTTP options</span>
+            <span>{t('monitor_form.advanced_http_options')}</span>
           </label>
 
           {showAdvancedHttp && (
             <div className="mt-4 space-y-4">
               <div>
-                <label className={labelClass}>Headers (JSON, optional)</label>
+                <label className={labelClass}>{t('monitor_form.headers_optional')}</label>
                 <textarea
                   value={httpHeadersJson}
                   onChange={(e) => setHttpHeadersJson(e.target.value)}
                   className={`${textareaClass} font-mono`}
                   rows={4}
-                  placeholder='{"Authorization":"Bearer ..."}'
+                  placeholder={t('monitor_form.headers_placeholder')}
                 />
                 {!headersParse.ok && (
                   <div className="mt-1 text-xs text-red-600 dark:text-red-400">{headersParse.error}</div>
                 )}
-                <div className={FIELD_HELP_CLASS}>Tip: set <code>Content-Type</code> here if you use a request body.</div>
+                <div className={FIELD_HELP_CLASS}>{t('monitor_form.headers_help')}</div>
               </div>
 
               <div>
-                <label className={labelClass}>Expected Status Codes (optional)</label>
+                <label className={labelClass}>{t('monitor_form.expected_status_optional')}</label>
                 <input
                   type="text"
                   value={expectedStatusInput}
                   onChange={(e) => setExpectedStatusInput(e.target.value)}
                   className={inputClass}
-                  placeholder="200, 204, 301"
+                  placeholder={t('monitor_form.expected_status_placeholder')}
                 />
                 {!expectedStatusParse.ok && (
                   <div className="mt-1 text-xs text-red-600 dark:text-red-400">{expectedStatusParse.error}</div>
                 )}
-                <div className={FIELD_HELP_CLASS}>Leave empty to accept 2xx.</div>
+                <div className={FIELD_HELP_CLASS}>{t('monitor_form.expected_status_help')}</div>
               </div>
 
               <div>
-                <label className={labelClass}>Body (optional)</label>
+                <label className={labelClass}>{t('monitor_form.body_optional')}</label>
                 <textarea
                   value={httpBody}
                   onChange={(e) => setHttpBody(e.target.value)}
                   className={`${textareaClass} font-mono`}
                   rows={4}
-                  placeholder={httpMethod === 'GET' || httpMethod === 'HEAD' ? '(usually empty for GET/HEAD)' : '...'}
+                  placeholder={
+                    httpMethod === 'GET' || httpMethod === 'HEAD'
+                      ? t('monitor_form.body_placeholder_get_head')
+                      : t('monitor_form.body_placeholder_default')
+                  }
                 />
               </div>
 
               <div>
-                <label className={labelClass}>Response Must Contain (optional)</label>
+                <label className={labelClass}>{t('monitor_form.response_must_contain_optional')}</label>
                 <input
                   type="text"
                   value={responseKeyword}
                   onChange={(e) => setResponseKeyword(e.target.value)}
                   className={inputClass}
-                  placeholder="e.g. ok"
+                  placeholder={t('monitor_form.response_must_contain_placeholder')}
                 />
               </div>
 
               <div>
-                <label className={labelClass}>Response Must Not Contain (optional)</label>
+                <label className={labelClass}>{t('monitor_form.response_must_not_contain_optional')}</label>
                 <input
                   type="text"
                   value={responseForbiddenKeyword}
                   onChange={(e) => setResponseForbiddenKeyword(e.target.value)}
                   className={inputClass}
-                  placeholder="e.g. error"
+                  placeholder={t('monitor_form.response_must_not_contain_placeholder')}
                 />
               </div>
 
               {monitor && (
-                <div className={FIELD_HELP_CLASS}>Clearing a field will reset it to default behavior.</div>
+                <div className={FIELD_HELP_CLASS}>{t('monitor_form.clear_help')}</div>
               )}
             </div>
           )}
@@ -492,10 +507,10 @@ export function MonitorForm(props: CreateProps | EditProps) {
 
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="secondary" onClick={props.onCancel} className="flex-1">
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" disabled={props.isLoading || !canSubmit} className="flex-1">
-          {props.isLoading ? 'Saving...' : monitor ? 'Update' : 'Create'}
+          {props.isLoading ? t('common.saving') : monitor ? t('common.update') : t('common.create')}
         </Button>
       </div>
     </form>

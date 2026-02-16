@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import type { UptimeDay, UptimeRatingLevel } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import { formatDate } from '../utils/datetime';
 import { getUptimeBgClasses, getUptimeTier } from '../utils/uptime';
 
@@ -17,8 +18,8 @@ interface UptimeBar30dProps {
   fillMode?: 'pad' | 'stretch';
 }
 
-function formatDay(ts: number, timeZone: string): string {
-  return formatDate(ts, timeZone);
+function formatDay(ts: number, timeZone: string, locale: string): string {
+  return formatDate(ts, timeZone, locale);
 }
 
 function formatSec(totalSeconds: number): string {
@@ -96,6 +97,8 @@ interface TooltipState {
 }
 
 function Tooltip({ day, position, ratingLevel, timeZone }: { day: UptimeDay; position: { x: number; y: number }; ratingLevel: UptimeRatingLevel; timeZone: string }) {
+  const { locale, t } = useI18n();
+
   return (
     <div
       className="fixed z-50 px-3 py-2 text-xs bg-slate-900 dark:bg-slate-700 text-white rounded-lg shadow-lg pointer-events-none animate-fade-in"
@@ -105,15 +108,15 @@ function Tooltip({ day, position, ratingLevel, timeZone }: { day: UptimeDay; pos
         transform: 'translate(-50%, -100%) translateY(-8px)',
       }}
     >
-      <div className="font-medium mb-1">{formatDay(day.day_start_at, timeZone)}</div>
+      <div className="font-medium mb-1">{formatDay(day.day_start_at, timeZone, locale)}</div>
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${getUptimeColorClasses(day.uptime_pct, ratingLevel)}`} />
         <span>
-          {day.uptime_pct === null ? 'No data' : `${day.uptime_pct.toFixed(3)}%`} uptime
+          {day.uptime_pct === null ? t('uptime.no_data') : `${day.uptime_pct.toFixed(3)}%`} {t('uptime.uptime')}
         </span>
       </div>
-      <div className="mt-1 text-slate-300">Downtime: {formatSec(day.downtime_sec)}</div>
-      {day.unknown_sec > 0 && <div className="text-slate-300">Unknown: {formatSec(day.unknown_sec)}</div>}
+      <div className="mt-1 text-slate-300">{t('uptime.downtime')}: {formatSec(day.downtime_sec)}</div>
+      {day.unknown_sec > 0 && <div className="text-slate-300">{t('uptime.unknown')}: {formatSec(day.unknown_sec)}</div>}
       <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-700 rotate-45" />
     </div>
   );
@@ -128,6 +131,7 @@ export function UptimeBar30d({
   density = 'default',
   fillMode = 'pad',
 }: UptimeBar30dProps) {
+  const { locale, t } = useI18n();
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const compact = density === 'compact';
 
@@ -192,7 +196,7 @@ export function UptimeBar30d({
             <button
               key={slotKey}
               type="button"
-              aria-label={`Uptime ${formatDay(d.day_start_at, timeZone)}`}
+              aria-label={`${t('uptime.aria_prefix')} ${formatDay(d.day_start_at, timeZone, locale)}`}
               className={`${compact
                 ? 'max-w-[6px] min-w-[3px] flex-1'
                 : 'max-w-[6px] min-w-[3px] flex-1 sm:max-w-[8px] sm:min-w-[4px]'} rounded-sm transition-all duration-150

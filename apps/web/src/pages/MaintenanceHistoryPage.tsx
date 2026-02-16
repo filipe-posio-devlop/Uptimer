@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useI18n } from '../app/I18nContext';
+import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { ApiError, fetchPublicMaintenanceWindows, fetchStatus } from '../api/client';
 import type { MaintenanceWindow } from '../api/types';
 import { Markdown } from '../components/Markdown';
@@ -16,12 +18,14 @@ function formatError(err: unknown): string | undefined {
 }
 
 export function MaintenanceHistoryPage() {
+  const { locale, t } = useI18n();
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [all, setAll] = useState<MaintenanceWindow[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
 
   const statusQuery = useQuery({ queryKey: ['status'], queryFn: fetchStatus });
   const timeZone = statusQuery.data?.site_timezone ?? 'UTC';
+  useApplyServerLocaleSetting(statusQuery.data?.site_locale);
   const monitorNames = useMemo(
     () => new Map((statusQuery.data?.monitors ?? []).map((m) => [m.id, m.name] as const)),
     [statusQuery.data?.monitors],
@@ -33,8 +37,8 @@ export function MaintenanceHistoryPage() {
   });
 
   useEffect(() => {
-    document.title = 'Maintenance History';
-  }, []);
+    document.title = t('maintenance_history.title');
+  }, [t]);
 
   useEffect(() => {
     if (!query.data) return;
@@ -60,13 +64,13 @@ export function MaintenanceHistoryPage() {
             <Link
               to="/"
               className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
-              aria-label="Back"
+              aria-label={t('history.back_aria')}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">Maintenance History</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t('maintenance_history.title')}</h1>
           </div>
           <ThemeToggle />
         </div>
@@ -84,7 +88,7 @@ export function MaintenanceHistoryPage() {
           </div>
         ) : query.isError ? (
           <Card className="p-6 text-center">
-            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? 'Failed to load maintenance windows'}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? t('history.failed_load_maintenance')}</p>
           </Card>
         ) : all.length > 0 ? (
           <>
@@ -94,11 +98,11 @@ export function MaintenanceHistoryPage() {
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                     <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                     <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {formatDateTime(w.starts_at, timeZone)} – {formatDateTime(w.ends_at, timeZone)}
+                      {formatDateTime(w.starts_at, timeZone, locale)} – {formatDateTime(w.ends_at, timeZone, locale)}
                     </span>
                   </div>
                   <div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                    Affected: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                    {t('common.affected')}: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                   </div>
                   {w.message && <Markdown text={w.message} />}
                 </Card>
@@ -112,14 +116,14 @@ export function MaintenanceHistoryPage() {
                   disabled={query.isFetching}
                   variant="secondary"
                 >
-                  {query.isFetching ? 'Loading…' : 'Load more'}
+                  {query.isFetching ? t('common.loading_ellipsis') : t('common.load_more')}
                 </Button>
               </div>
             )}
           </>
         ) : (
           <Card className="p-6 text-center">
-            <p className="text-slate-500 dark:text-slate-400">No past maintenance windows</p>
+            <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_maintenance')}</p>
           </Card>
         )}
       </main>

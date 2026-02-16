@@ -1,6 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import type { MonitorAnalyticsDayPoint } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import { useTheme } from '../app/ThemeContext';
 
 interface DailyUptimeChartProps {
@@ -13,6 +14,7 @@ function formatDay(ts: number): string {
 }
 
 export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps) {
+  const { t } = useI18n();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
@@ -23,7 +25,11 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
   }));
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[220px] text-slate-500 dark:text-slate-400">No data</div>;
+    return (
+      <div className="flex items-center justify-center h-[220px] text-slate-500 dark:text-slate-400">
+        {t('common.no_data')}
+      </div>
+    );
   }
 
   const axisColor = isDark ? '#64748b' : '#9ca3af';
@@ -37,7 +43,10 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
         <YAxis tick={{ fontSize: 12, fill: axisColor }} stroke={axisColor} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
         <Tooltip
           labelFormatter={(v) => new Date(Number(v) * 1000).toLocaleDateString()}
-          formatter={(v: number, name) => [`${v}%`, name === 'uptime_pct' ? 'Uptime' : 'Unknown']}
+          formatter={(v: number, name) => [
+            `${v}%`,
+            name === 'uptime_pct' ? t('uptime.uptime') : t('uptime.unknown'),
+          ]}
           contentStyle={{
             backgroundColor: isDark ? '#1e293b' : '#ffffff',
             borderColor: isDark ? '#334155' : '#e2e8f0',
@@ -51,4 +60,3 @@ export function DailyUptimeChart({ points, height = 220 }: DailyUptimeChartProps
     </ResponsiveContainer>
   );
 }
-

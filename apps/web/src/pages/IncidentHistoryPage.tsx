@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useI18n } from '../app/I18nContext';
+import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { ApiError, fetchPublicIncidents, fetchStatus } from '../api/client';
 import type { Incident } from '../api/types';
 import { Markdown } from '../components/Markdown';
@@ -13,6 +15,7 @@ import {
   MODAL_PANEL_CLASS,
   ThemeToggle,
 } from '../components/ui';
+import { incidentImpactLabel, incidentStatusLabel } from '../i18n/labels';
 import { formatDateTime } from '../utils/datetime';
 
 function formatError(err: unknown): string | undefined {
@@ -31,6 +34,8 @@ function IncidentCard({
   onClick: () => void;
   timeZone: string;
 }) {
+  const { locale, t } = useI18n();
+
   return (
     <button
       onClick={onClick}
@@ -39,12 +44,12 @@ function IncidentCard({
       <div className="flex items-start justify-between gap-4 mb-2">
         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{incident.title}</h4>
         <Badge variant={incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'}>
-          {incident.impact}
+          {incidentImpactLabel(incident.impact, t)}
         </Badge>
       </div>
       <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 mb-3">
-        <Badge variant="info">{incident.status}</Badge>
-        <span>{formatDateTime(incident.started_at, timeZone)}</span>
+        <Badge variant="info">{incidentStatusLabel(incident.status, t)}</Badge>
+        <span>{formatDateTime(incident.started_at, timeZone, locale)}</span>
       </div>
       {incident.message && (
         <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{incident.message}</p>
@@ -64,6 +69,8 @@ function IncidentDetail({
   onClose: () => void;
   timeZone: string;
 }) {
+  const { locale, t } = useI18n();
+
   return (
     <div
       className={MODAL_OVERLAY_CLASS}
@@ -80,9 +87,9 @@ function IncidentDetail({
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'}>
-                {incident.impact}
+                {incidentImpactLabel(incident.impact, t)}
               </Badge>
-              <Badge variant="info">{incident.status}</Badge>
+              <Badge variant="info">{incidentStatusLabel(incident.status, t)}</Badge>
             </div>
           </div>
           <Button
@@ -99,19 +106,19 @@ function IncidentDetail({
 
         <div className="space-y-2 sm:space-y-3 text-sm text-slate-600 dark:text-slate-300 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row sm:gap-2">
-            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">Affected:</span>
+            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.affected')}:</span>
             <span className="text-sm">
               {incident.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
             </span>
           </div>
           <div className="flex flex-col sm:flex-row sm:gap-2">
-            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">Started:</span>
-            <span className="text-sm">{formatDateTime(incident.started_at, timeZone)}</span>
+            <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.started')}:</span>
+            <span className="text-sm">{formatDateTime(incident.started_at, timeZone, locale)}</span>
           </div>
           {incident.resolved_at && (
             <div className="flex flex-col sm:flex-row sm:gap-2">
-              <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">Resolved:</span>
-              <span className="text-sm">{formatDateTime(incident.resolved_at, timeZone)}</span>
+              <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">{t('common.resolved')}:</span>
+              <span className="text-sm">{formatDateTime(incident.resolved_at, timeZone, locale)}</span>
             </div>
           )}
         </div>
@@ -120,7 +127,7 @@ function IncidentDetail({
           {incident.message && (
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
-                Initial Report
+                {t('status_page.initial_report')}
               </div>
               <Markdown text={incident.message} />
             </div>
@@ -129,8 +136,8 @@ function IncidentDetail({
           {incident.updates.map((u) => (
             <div key={u.id} className="border-l-2 border-slate-200 dark:border-slate-600 pl-4">
               <div className="flex items-center gap-3 mb-2">
-                {u.status && <Badge variant="info">{u.status}</Badge>}
-                <span className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(u.created_at, timeZone)}</span>
+                {u.status && <Badge variant="info">{incidentStatusLabel(u.status, t)}</Badge>}
+                <span className="text-xs text-slate-400 dark:text-slate-500">{formatDateTime(u.created_at, timeZone, locale)}</span>
               </div>
               <Markdown text={u.message} />
             </div>
@@ -142,6 +149,7 @@ function IncidentDetail({
 }
 
 export function IncidentHistoryPage() {
+  const { t } = useI18n();
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [all, setAll] = useState<Incident[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
@@ -149,6 +157,7 @@ export function IncidentHistoryPage() {
 
   const statusQuery = useQuery({ queryKey: ['status'], queryFn: fetchStatus });
   const timeZone = statusQuery.data?.site_timezone ?? 'UTC';
+  useApplyServerLocaleSetting(statusQuery.data?.site_locale);
 
   const query = useQuery({
     queryKey: ['public-incidents', 'resolved', cursor],
@@ -156,8 +165,8 @@ export function IncidentHistoryPage() {
   });
 
   useEffect(() => {
-    document.title = 'Incident History';
-  }, []);
+    document.title = t('incident_history.title');
+  }, [t]);
 
   useEffect(() => {
     if (!query.data) return;
@@ -189,13 +198,13 @@ export function IncidentHistoryPage() {
             <Link
               to="/"
               className="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
-              aria-label="Back"
+              aria-label={t('history.back_aria')}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Link>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">Incident History</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{t('incident_history.title')}</h1>
           </div>
           <ThemeToggle />
         </div>
@@ -213,7 +222,7 @@ export function IncidentHistoryPage() {
           </div>
         ) : query.isError ? (
           <Card className="p-6 text-center">
-            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? 'Failed to load incidents'}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">{formatError(query.error) ?? t('history.failed_load_incidents')}</p>
           </Card>
         ) : all.length > 0 ? (
           <>
@@ -230,14 +239,14 @@ export function IncidentHistoryPage() {
                   disabled={query.isFetching}
                   variant="secondary"
                 >
-                  {query.isFetching ? 'Loading…' : 'Load more'}
+                  {query.isFetching ? t('common.loading_ellipsis') : t('common.load_more')}
                 </Button>
               </div>
             )}
           </>
         ) : (
           <Card className="p-6 text-center">
-            <p className="text-slate-500 dark:text-slate-400">No past incidents</p>
+            <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_incidents')}</p>
           </Card>
         )}
       </main>

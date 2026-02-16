@@ -1,6 +1,7 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import type { MonitorAnalyticsDayPoint } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import { useTheme } from '../app/ThemeContext';
 
 interface DailyLatencyChartProps {
@@ -13,6 +14,7 @@ function formatDay(ts: number): string {
 }
 
 export function DailyLatencyChart({ points, height = 220 }: DailyLatencyChartProps) {
+  const { t } = useI18n();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
@@ -25,7 +27,11 @@ export function DailyLatencyChart({ points, height = 220 }: DailyLatencyChartPro
     }));
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[220px] text-slate-500 dark:text-slate-400">No latency data</div>;
+    return (
+      <div className="flex items-center justify-center h-[220px] text-slate-500 dark:text-slate-400">
+        {t('common.no_latency_data')}
+      </div>
+    );
   }
 
   const axisColor = isDark ? '#64748b' : '#9ca3af';
@@ -53,4 +59,3 @@ export function DailyLatencyChart({ points, height = 220 }: DailyLatencyChartPro
     </ResponsiveContainer>
   );
 }
-

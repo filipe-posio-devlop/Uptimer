@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 
 import type { PublicMonitor } from '../api/types';
+import { useI18n } from '../app/I18nContext';
+import { statusLabel } from '../i18n/labels';
 import { HeartbeatBar } from './HeartbeatBar';
 import { UptimeBar30d } from './UptimeBar30d';
 import { Badge, Card, StatusDot } from './ui';
@@ -44,10 +46,13 @@ function getHeartbeatLatencyStats(heartbeats: PublicMonitor['heartbeats']): {
 }
 
 export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: MonitorCardProps) {
+  const { locale, t } = useI18n();
   const uptime30d = monitor.uptime_30d;
   const checkedAt = monitor.last_checked_at
-    ? (timeZone ? formatTime(monitor.last_checked_at, { timeZone }) : formatTime(monitor.last_checked_at))
-    : 'Never checked';
+    ? (timeZone
+        ? formatTime(monitor.last_checked_at, { timeZone, locale })
+        : formatTime(monitor.last_checked_at, { locale }))
+    : t('monitor_card.never_checked');
   const latencyStats = useMemo(
     () => getHeartbeatLatencyStats(monitor.heartbeats ?? []),
     [monitor.heartbeats],
@@ -69,7 +74,7 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
               <span>{monitor.type}</span>
               {monitor.is_stale && (
                 <span className="rounded bg-amber-100 px-1.5 py-px text-[10px] font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
-                  stale
+                  {t('monitor_card.stale')}
                 </span>
               )}
             </div>
@@ -80,7 +85,7 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
           {uptime30d && tier ? (
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums ${getUptimePillClasses(tier)}`}
-              title="30-day availability"
+              title={t('monitor_card.uptime_title')}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${getUptimeBgClasses(tier)}`} />
               {formatPct(uptime30d.uptime_pct)}
@@ -88,13 +93,13 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
           ) : (
             <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
           )}
-          <Badge variant={monitor.status}>{monitor.status}</Badge>
+          <Badge variant={monitor.status}>{statusLabel(monitor.status, t)}</Badge>
         </div>
       </div>
 
       {/* Availability (30d) */}
       <div>
-        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">30-day availability</div>
+        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">{t('monitor_card.availability_30d')}</div>
         <UptimeBar30d
           days={monitor.uptime_days}
           ratingLevel={monitor.uptime_rating_level}
@@ -107,7 +112,9 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
 
       {/* Heartbeat */}
       <div className="mt-2">
-        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">Last {HEARTBEAT_BARS} checks</div>
+        <div className="mb-2 text-[11px] text-slate-400 dark:text-slate-500">
+          {t('monitor_card.last_checks', { count: HEARTBEAT_BARS })}
+        </div>
         <HeartbeatBar
           heartbeats={monitor.heartbeats ?? []}
           maxBars={HEARTBEAT_BARS}
@@ -118,12 +125,12 @@ export function MonitorCard({ monitor, onSelect, onDayClick, timeZone }: Monitor
       {/* Latency + timestamp footer */}
       <div className="mt-2 sm:mt-2.5 flex flex-wrap items-baseline justify-between gap-y-1 text-xs text-slate-500 dark:text-slate-400">
         <div className="flex items-baseline gap-2 sm:gap-3 tabular-nums">
-          <span><span className="text-slate-400 dark:text-slate-500">fast</span> {formatLatency(latencyStats.fastestMs)}</span>
-          <span><span className="text-slate-400 dark:text-slate-500">avg</span> {formatLatency(latencyStats.avgMs)}</span>
-          <span><span className="text-slate-400 dark:text-slate-500">slow</span> {formatLatency(latencyStats.slowestMs)}</span>
+          <span><span className="text-slate-400 dark:text-slate-500">{t('monitor_card.fast')}</span> {formatLatency(latencyStats.fastestMs)}</span>
+          <span><span className="text-slate-400 dark:text-slate-500">{t('monitor_card.avg')}</span> {formatLatency(latencyStats.avgMs)}</span>
+          <span><span className="text-slate-400 dark:text-slate-500">{t('monitor_card.slow')}</span> {formatLatency(latencyStats.slowestMs)}</span>
         </div>
         <span className="text-[11px] text-slate-400 dark:text-slate-500">
-          {monitor.last_checked_at ? checkedAt : 'Never checked'}
+          {monitor.last_checked_at ? checkedAt : t('monitor_card.never_checked')}
         </span>
       </div>
     </Card>

@@ -765,6 +765,7 @@ export async function computePublicStatusPayload(db: D1Database, now: number): P
     generated_at: now,
     site_title: settings.site_title,
     site_description: settings.site_description,
+    site_locale: settings.site_locale,
     site_timezone: settings.site_timezone,
     // Uptime color thresholds are configurable (1-5). Default: Level 3 (Production/SaaS).
     uptime_rating_level: uptimeRatingLevel,

@@ -11,6 +11,7 @@ export type SettingsResponse = {
   settings: {
     site_title: string;
     site_description: string;
+    site_locale: 'auto' | 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
     site_timezone: string;
 
     retention_check_results_days: number;
@@ -28,6 +29,7 @@ export type SettingsResponse = {
 const DEFAULTS: SettingsResponse['settings'] = {
   site_title: 'Uptimer',
   site_description: '',
+  site_locale: 'auto',
   site_timezone: 'UTC',
 
   retention_check_results_days: 7,
@@ -69,6 +71,9 @@ export function parseSettingsPatch(rawBody: unknown): SettingsPatchInput {
   if (!r.success) {
     throw new AppError(400, 'INVALID_ARGUMENT', r.error.message);
   }
+  if (Object.keys(r.data).length === 0) {
+    throw new AppError(400, 'INVALID_ARGUMENT', 'At least one field must be provided');
+  }
   return r.data;
 }
 
@@ -84,6 +89,9 @@ export async function readSettings(db: D1Database): Promise<SettingsResponse['se
   const site_title = parseStringSetting(map.get('site_title'), { max: 100 }) ?? DEFAULTS.site_title;
   const site_description =
     parseStringSetting(map.get('site_description'), { max: 500, allowEmpty: true }) ?? DEFAULTS.site_description;
+  const site_locale =
+    parseEnumSetting(map.get('site_locale'), ['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es'] as const) ??
+    DEFAULTS.site_locale;
   const site_timezone = parseStringSetting(map.get('site_timezone'), { max: 64 }) ?? DEFAULTS.site_timezone;
 
   const retention_check_results_days =
@@ -115,6 +123,7 @@ export async function readSettings(db: D1Database): Promise<SettingsResponse['se
   return {
     site_title,
     site_description,
+    site_locale,
     site_timezone,
 
     retention_check_results_days,

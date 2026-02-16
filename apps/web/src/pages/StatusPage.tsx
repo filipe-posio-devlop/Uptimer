@@ -2,11 +2,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useI18n } from '../app/I18nContext';
+import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { fetchLatency, fetchPublicDayContext, fetchPublicIncidents, fetchPublicMaintenanceWindows, fetchPublicMonitorOutages, fetchStatus } from '../api/client';
 import type { Incident, MaintenanceWindow, Outage, StatusResponse } from '../api/types';
 import { DayDowntimeModal } from '../components/DayDowntimeModal';
 import { Markdown } from '../components/Markdown';
 import { MonitorCard } from '../components/MonitorCard';
+import { incidentImpactLabel, incidentStatusLabel } from '../i18n/labels';
 import { formatDateTime } from '../utils/datetime';
 import {
   Badge,
@@ -25,43 +28,44 @@ const LatencyChart = lazy(async () => {
   return { default: mod.LatencyChart };
 });
 
-function getBannerConfig(status: BannerStatus) {
+function getBannerConfig(status: BannerStatus, t: ReturnType<typeof useI18n>['t']) {
   const configs = {
     operational: {
       iconBg: 'bg-emerald-500',
-      text: 'All Systems Operational',
+      text: t('status_page.all_systems_operational'),
       icon: '✓',
     },
     partial_outage: {
       iconBg: 'bg-amber-500',
-      text: 'Partial System Outage',
+      text: t('status_page.partial_system_outage'),
       icon: '!',
     },
     major_outage: {
       iconBg: 'bg-red-500',
-      text: 'Major System Outage',
+      text: t('status_page.major_system_outage'),
       icon: '✕',
     },
     maintenance: {
       iconBg: 'bg-blue-500',
-      text: 'Scheduled Maintenance',
+      text: t('status_page.scheduled_maintenance'),
       icon: '⚙',
     },
     unknown: {
       iconBg: 'bg-slate-500',
-      text: 'Status Unknown',
+      text: t('status_page.status_unknown'),
       icon: '?',
     },
   };
   return configs[status] || configs.unknown;
 }
 
-function monitorGroupLabel(groupName: string | null | undefined): string {
+function monitorGroupLabel(groupName: string | null | undefined, ungroupedLabel: string): string {
   const trimmed = groupName?.trim() ?? '';
-  return trimmed.length > 0 ? trimmed : 'Ungrouped';
+  return trimmed.length > 0 ? trimmed : ungroupedLabel;
 }
 
 function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () => void }) {
+  const { t } = useI18n();
   const { data, isLoading } = useQuery({
     queryKey: ['latency', monitorId],
     queryFn: () => fetchLatency(monitorId),
@@ -78,7 +82,7 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
       >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-            {data?.monitor.name ?? 'Loading...'}
+            {data?.monitor.name ?? t('common.loading')}
           </h2>
           <button
             onClick={onClose}
@@ -97,14 +101,14 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
 
         {isLoading ? (
           <div className="h-[200px] flex items-center justify-center text-slate-500 dark:text-slate-400">
-            Loading chart...
+            {t('status_page.loading_chart')}
           </div>
         ) : data ? (
           <>
             <div className="grid grid-cols-2 gap-3 sm:gap-6 mb-6">
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3">
                 <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">
-                  Avg Latency
+                  {t('status_page.avg_latency')}
                 </div>
                 <div className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {data.avg_latency_ms ?? '-'}ms
@@ -112,7 +116,7 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
               </div>
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3">
                 <div className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">
-                  P95 Latency
+                  {t('status_page.p95_latency')}
                 </div>
                 <div className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">
                   {data.p95_latency_ms ?? '-'}ms
@@ -122,7 +126,7 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
             <Suspense
               fallback={
                 <div className="h-[200px] flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  Loading chart...
+                  {t('status_page.loading_chart')}
                 </div>
               }
             >
@@ -131,7 +135,7 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
           </>
         ) : (
           <div className="h-[200px] flex items-center justify-center text-slate-500 dark:text-slate-400">
-            Failed to load data
+            {t('status_page.failed_load_data')}
           </div>
         )}
       </div>
@@ -140,6 +144,8 @@ function MonitorDetail({ monitorId, onClose }: { monitorId: number; onClose: () 
 }
 
 function IncidentCard({ incident, onClick, timeZone }: { incident: Incident; onClick: () => void; timeZone: string }) {
+  const { locale, t } = useI18n();
+
   return (
     <button
       onClick={onClick}
@@ -156,12 +162,12 @@ function IncidentCard({ incident, onClick, timeZone }: { incident: Incident; onC
                 : 'paused'
           }
         >
-          {incident.impact}
+          {incidentImpactLabel(incident.impact, t)}
         </Badge>
       </div>
       <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-slate-400 mb-3">
-        <Badge variant="info">{incident.status}</Badge>
-        <span>{formatDateTime(incident.started_at, timeZone)}</span>
+        <Badge variant="info">{incidentStatusLabel(incident.status, t)}</Badge>
+        <span>{formatDateTime(incident.started_at, timeZone, locale)}</span>
       </div>
       {incident.message && (
         <p className="text-sm text-slate-600 dark:text-slate-300 line-clamp-2">{incident.message}</p>
@@ -181,6 +187,8 @@ function IncidentDetail({
   onClose: () => void;
   timeZone: string;
 }) {
+  const { locale, t } = useI18n();
+
   return (
     <div
       className={MODAL_OVERLAY_CLASS}
@@ -201,9 +209,9 @@ function IncidentDetail({
                   incident.impact === 'critical' || incident.impact === 'major' ? 'down' : 'paused'
                 }
               >
-                {incident.impact}
+                {incidentImpactLabel(incident.impact, t)}
               </Badge>
-              <Badge variant="info">{incident.status}</Badge>
+              <Badge variant="info">{incidentStatusLabel(incident.status, t)}</Badge>
             </div>
           </div>
           <button
@@ -224,7 +232,7 @@ function IncidentDetail({
         <div className="space-y-2 sm:space-y-3 text-sm text-slate-600 dark:text-slate-300 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-slate-100 dark:border-slate-700">
           <div className="flex flex-col sm:flex-row sm:gap-2">
             <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
-              Affected:
+              {t('common.affected')}:
             </span>
             <span className="text-sm">
               {incident.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
@@ -232,16 +240,16 @@ function IncidentDetail({
           </div>
           <div className="flex flex-col sm:flex-row sm:gap-2">
             <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
-              Started:
+              {t('common.started')}:
             </span>
-            <span className="text-sm">{formatDateTime(incident.started_at, timeZone)}</span>
+            <span className="text-sm">{formatDateTime(incident.started_at, timeZone, locale)}</span>
           </div>
           {incident.resolved_at && (
             <div className="flex flex-col sm:flex-row sm:gap-2">
               <span className="text-slate-400 dark:text-slate-500 sm:w-20 text-xs sm:text-sm">
-                Resolved:
+                {t('common.resolved')}:
               </span>
-              <span className="text-sm">{formatDateTime(incident.resolved_at, timeZone)}</span>
+              <span className="text-sm">{formatDateTime(incident.resolved_at, timeZone, locale)}</span>
             </div>
           )}
         </div>
@@ -250,7 +258,7 @@ function IncidentDetail({
           {incident.message && (
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4">
               <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">
-                Initial Report
+                {t('status_page.initial_report')}
               </div>
               <Markdown text={incident.message} />
             </div>
@@ -259,9 +267,9 @@ function IncidentDetail({
           {incident.updates.map((u) => (
             <div key={u.id} className="border-l-2 border-slate-200 dark:border-slate-600 pl-4">
               <div className="flex items-center gap-3 mb-2">
-                {u.status && <Badge variant="info">{u.status}</Badge>}
+                {u.status && <Badge variant="info">{incidentStatusLabel(u.status, t)}</Badge>}
                 <span className="text-xs text-slate-400 dark:text-slate-500">
-                  {formatDateTime(u.created_at, timeZone)}
+                  {formatDateTime(u.created_at, timeZone, locale)}
                 </span>
               </div>
               <Markdown text={u.message} />
@@ -316,6 +324,7 @@ function StatusPageSkeleton() {
 }
 
 export function StatusPage() {
+  const { locale, t } = useI18n();
   const [selectedMonitorId, setSelectedMonitorId] = useState<number | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [selectedDay, setSelectedDay] = useState<{ monitorId: number; dayStartAt: number } | null>(null);
@@ -328,6 +337,8 @@ export function StatusPage() {
 
   const derivedTitle = statusQuery.data?.site_title || 'Uptimer';
   const derivedTimeZone = statusQuery.data?.site_timezone || 'UTC';
+
+  useApplyServerLocaleSetting(statusQuery.data?.site_locale);
 
   useEffect(() => {
     document.title = derivedTitle;
@@ -382,14 +393,14 @@ export function StatusPage() {
   const groupedMonitors = useMemo(() => {
     const groups = new Map<string, StatusResponse['monitors']>();
     for (const monitor of statusQuery.data?.monitors ?? []) {
-      const key = monitorGroupLabel(monitor.group_name);
+      const key = monitorGroupLabel(monitor.group_name, t('status_page.group_ungrouped'));
       const list = groups.get(key) ?? [];
       list.push(monitor);
       groups.set(key, list);
     }
 
     return [...groups.entries()].map(([name, monitors]) => ({ name, monitors }));
-  }, [statusQuery.data?.monitors]);
+  }, [statusQuery.data?.monitors, t]);
 
   if (statusQuery.isLoading) {
     return <StatusPageSkeleton />;
@@ -400,10 +411,10 @@ export function StatusPage() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100 mb-2">
-            Unable to load status
+            {t('status_page.unable_to_load_status')}
           </h2>
           <p className="text-slate-500 dark:text-slate-400">
-            Please check your connection and try again.
+            {t('status_page.check_connection')}
           </p>
         </div>
       </div>
@@ -411,7 +422,7 @@ export function StatusPage() {
   }
 
   const data = statusQuery.data;
-  const bannerConfig = getBannerConfig(data.banner.status);
+  const bannerConfig = getBannerConfig(data.banner.status, t);
   const activeIncidents = data.active_incidents;
   const monitorNames = new Map(data.monitors.map((m) => [m.id, m.name] as const));
 
@@ -443,13 +454,17 @@ export function StatusPage() {
           </div>
           <h2 className="text-lg sm:text-2xl font-bold mb-1 text-slate-900 dark:text-slate-100">{bannerConfig.text}</h2>
           {data.banner.source === 'incident' && data.banner.incident && (
-            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">Incident: {data.banner.incident.title}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">
+              {t('status_page.incident_prefix', { value: data.banner.incident.title })}
+            </p>
           )}
           {data.banner.source === 'maintenance' && data.banner.maintenance_window && (
-            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">Maintenance: {data.banner.maintenance_window.title}</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm px-4">
+              {t('status_page.maintenance_prefix', { value: data.banner.maintenance_window.title })}
+            </p>
           )}
           <p className="text-slate-400 dark:text-slate-500 text-xs mt-2">
-            Last updated: {formatDateTime(data.generated_at, timeZone)}
+            {t('common.last_updated', { value: formatDateTime(data.generated_at, timeZone, locale) })}
           </p>
         </div>
       </div>
@@ -473,12 +488,12 @@ export function StatusPage() {
                 />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
-              Maintenance
+              {t('status_page.scheduled_maintenance')}
             </h3>
 
             {data.maintenance_windows.active.length > 0 && (
               <div className="mb-4">
-                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">Active</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">{t('common.active')}</div>
                 <div className="space-y-3">
                   {data.maintenance_windows.active.map((w) => (
                     <Card
@@ -488,12 +503,12 @@ export function StatusPage() {
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                         <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          {formatDateTime(w.starts_at, timeZone)} –{' '}
-                          {formatDateTime(w.ends_at, timeZone)}
+                          {formatDateTime(w.starts_at, timeZone, locale)} –{' '}
+                          {formatDateTime(w.ends_at, timeZone, locale)}
                         </span>
                       </div>
                       <div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                        Affected: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                        {t('common.affected')}: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                       </div>
                       {w.message && <Markdown text={w.message} />}
                     </Card>
@@ -504,7 +519,7 @@ export function StatusPage() {
 
             {data.maintenance_windows.upcoming.length > 0 && (
               <div>
-                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">Upcoming</div>
+                <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-2">{t('common.upcoming')}</div>
                 <div className="space-y-3">
                   {data.maintenance_windows.upcoming.map((w) => (
                     <Card
@@ -514,12 +529,12 @@ export function StatusPage() {
                       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                         <h4 className="font-semibold text-slate-900 dark:text-slate-100">{w.title}</h4>
                         <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          {formatDateTime(w.starts_at, timeZone)} –{' '}
-                          {formatDateTime(w.ends_at, timeZone)}
+                          {formatDateTime(w.starts_at, timeZone, locale)} –{' '}
+                          {formatDateTime(w.ends_at, timeZone, locale)}
                         </span>
                       </div>
                       <div className="text-sm text-slate-600 dark:text-slate-300">
-                        Affected: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                        {t('common.affected')}: {w.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                       </div>
                     </Card>
                   ))}
@@ -546,7 +561,7 @@ export function StatusPage() {
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                 />
               </svg>
-              Active Incidents
+              {t('status_page.active_incidents')}
             </h3>
             <div className="space-y-3">
               {activeIncidents.map((it) => (
@@ -558,7 +573,7 @@ export function StatusPage() {
 
         {/* Monitors */}
         <section>
-          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3">Services</h3>
+          <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2.5 sm:mb-3">{t('status_page.services')}</h3>
           <div className="space-y-5">
             {groupedMonitors.map((group) => (
               <div key={group.name}>
@@ -582,7 +597,7 @@ export function StatusPage() {
           </div>
           {data.monitors.length === 0 && (
             <Card className="p-8 text-center">
-              <p className="text-slate-500 dark:text-slate-400">No monitors configured</p>
+              <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_monitors')}</p>
             </Card>
           )}
         </section>
@@ -590,12 +605,12 @@ export function StatusPage() {
         <section className="mt-6 pt-5 sm:mt-8 sm:pt-6 border-t border-slate-100 dark:border-slate-800 space-y-6 sm:space-y-8">
           <div>
             <div className="flex items-center justify-between mb-2.5 sm:mb-3">
-              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">Incident History</h3>
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">{t('status_page.incident_history')}</h3>
               <Link
                 to="/history/incidents"
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
-                View more
+                {t('common.view_more')}
               </Link>
             </div>
 
@@ -603,7 +618,7 @@ export function StatusPage() {
               <div className="ui-skeleton h-28 rounded-xl border border-slate-200/70 dark:border-slate-700/70" />
             ) : resolvedHistoryQuery.isError ? (
               <Card className="p-6 text-center">
-                <p className="text-sm text-red-600 dark:text-red-400">Failed to load incident history</p>
+                <p className="text-sm text-red-600 dark:text-red-400">{t('status_page.failed_load_incident_history')}</p>
               </Card>
             ) : resolvedIncidentPreview ? (
               <IncidentCard
@@ -613,19 +628,19 @@ export function StatusPage() {
               />
             ) : (
               <Card className="p-6 text-center">
-                <p className="text-slate-500 dark:text-slate-400">No past incidents</p>
+                <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_incidents')}</p>
               </Card>
             )}
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2.5 sm:mb-3">
-              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">Maintenance History</h3>
+              <h3 className="text-base sm:text-lg font-semibold text-slate-900 dark:text-slate-100">{t('status_page.maintenance_history')}</h3>
               <Link
                 to="/history/maintenance"
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
               >
-                View more
+                {t('common.view_more')}
               </Link>
             </div>
 
@@ -633,24 +648,24 @@ export function StatusPage() {
               <div className="ui-skeleton h-28 rounded-xl border border-slate-200/70 dark:border-slate-700/70" />
             ) : maintenanceHistoryQuery.isError ? (
               <Card className="p-6 text-center">
-                <p className="text-sm text-red-600 dark:text-red-400">Failed to load maintenance history</p>
+                <p className="text-sm text-red-600 dark:text-red-400">{t('status_page.failed_load_maintenance_history')}</p>
               </Card>
             ) : maintenanceHistoryPreviewSafe ? (
               <Card className="p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
                   <h4 className="font-semibold text-slate-900 dark:text-slate-100">{maintenanceHistoryPreviewSafe.title}</h4>
                   <span className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                    {formatDateTime(maintenanceHistoryPreviewSafe.starts_at, timeZone)} – {formatDateTime(maintenanceHistoryPreviewSafe.ends_at, timeZone)}
+                    {formatDateTime(maintenanceHistoryPreviewSafe.starts_at, timeZone, locale)} – {formatDateTime(maintenanceHistoryPreviewSafe.ends_at, timeZone, locale)}
                   </span>
                 </div>
                 <div className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                  Affected: {maintenanceHistoryPreviewSafe.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
+                  {t('common.affected')}: {maintenanceHistoryPreviewSafe.monitor_ids.map((id) => monitorNames.get(id) ?? `#${id}`).join(', ')}
                 </div>
                 {maintenanceHistoryPreviewSafe.message && <Markdown text={maintenanceHistoryPreviewSafe.message} />}
               </Card>
             ) : (
               <Card className="p-6 text-center">
-                <p className="text-slate-500 dark:text-slate-400">No past maintenance windows</p>
+                <p className="text-slate-500 dark:text-slate-400">{t('status_page.no_past_maintenance')}</p>
               </Card>
             )}
           </div>
@@ -661,7 +676,7 @@ export function StatusPage() {
       {/* Footer */}
       <footer className="border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800">
         <div className="mx-auto max-w-5xl px-4 py-3 text-center text-sm text-slate-400 dark:text-slate-500 sm:px-6 sm:py-4 lg:px-8">
-          Powered by {siteTitle}
+          {t('status_page.powered_by', { value: siteTitle })}
         </div>
       </footer>
 
@@ -687,25 +702,25 @@ export function StatusPage() {
 
       {selectedDay && outagesQuery.isLoading && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">Loading outages…</div>
+          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">{t('status_page.loading_outages')}</div>
         </div>
       )}
 
       {selectedDay && outagesQuery.isError && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">Failed to load outages</div>
+          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">{t('status_page.failed_load_outages')}</div>
         </div>
       )}
 
       {selectedDay && dayContextQuery.isLoading && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">Loading context…</div>
+          <div className="bg-slate-900/80 text-white text-sm px-3 py-2 rounded-lg">{t('status_page.loading_context')}</div>
         </div>
       )}
 
       {selectedDay && dayContextQuery.isError && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">Failed to load context</div>
+          <div className="bg-red-600/90 text-white text-sm px-3 py-2 rounded-lg">{t('status_page.failed_load_context')}</div>
         </div>
       )}
     </div>

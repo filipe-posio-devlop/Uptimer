@@ -1,26 +1,14 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Heartbeat, CheckStatus } from '../api/types';
+import { useI18n } from '../app/I18nContext';
+import { statusLabel } from '../i18n/labels';
 
 interface HeartbeatBarProps {
   heartbeats: Heartbeat[];
   maxBars?: number;
   visualBars?: number;
   density?: 'default' | 'compact';
-}
-
-function statusToAccessibleLabel(status: CheckStatus): string {
-  switch (status) {
-    case 'up':
-      return 'Up';
-    case 'down':
-      return 'Down';
-    case 'maintenance':
-      return 'Maintenance';
-    case 'unknown':
-    default:
-      return 'Unknown';
-  }
 }
 
 function getStatusColor(status: CheckStatus): string {
@@ -85,8 +73,8 @@ function getBarHeight(heartbeat: DisplayHeartbeat, scale: LatencyScale | null, c
   return `${pct.toFixed(1)}%`;
 }
 
-function formatTime(timestamp: number): string {
-  return new Date(timestamp * 1000).toLocaleString();
+function formatTime(timestamp: number, locale: string): string {
+  return new Date(timestamp * 1000).toLocaleString(locale);
 }
 
 interface TooltipProps {
@@ -95,6 +83,7 @@ interface TooltipProps {
 }
 
 function Tooltip({ heartbeat, position }: TooltipProps) {
+  const { locale, t } = useI18n();
   const hasWindow = heartbeat.sample_count > 1 && heartbeat.from_checked_at !== heartbeat.to_checked_at;
 
   return (
@@ -108,18 +97,18 @@ function Tooltip({ heartbeat, position }: TooltipProps) {
     >
       <div className="font-medium mb-1">
         {hasWindow
-          ? `${formatTime(heartbeat.from_checked_at)} - ${formatTime(heartbeat.to_checked_at)}`
-          : formatTime(heartbeat.checked_at)}
+          ? `${formatTime(heartbeat.from_checked_at, locale)} ${t('heartbeat.to')} ${formatTime(heartbeat.to_checked_at, locale)}`
+          : formatTime(heartbeat.checked_at, locale)}
       </div>
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${getStatusColor(heartbeat.status)}`} />
-        <span className="capitalize">{heartbeat.status}</span>
+        <span>{statusLabel(heartbeat.status, t)}</span>
         {heartbeat.latency_ms !== null && (
           <span className="text-slate-400 dark:text-slate-300">• {heartbeat.latency_ms}ms</span>
         )}
       </div>
       {heartbeat.sample_count > 1 && (
-        <div className="mt-1 text-slate-300">{heartbeat.sample_count} checks</div>
+        <div className="mt-1 text-slate-300">{t('heartbeat.sample_checks', { count: heartbeat.sample_count })}</div>
       )}
       <div className="absolute left-1/2 -bottom-1 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-700 rotate-45" />
     </div>
@@ -190,6 +179,7 @@ function aggregateHeartbeats(
 }
 
 export function HeartbeatBar({ heartbeats, maxBars = 60, visualBars, density = 'default' }: HeartbeatBarProps) {
+  const { locale, t } = useI18n();
   const [tooltip, setTooltip] = useState<{ heartbeat: DisplayHeartbeat; position: { x: number; y: number } } | null>(null);
   const compact = density === 'compact';
 
@@ -224,7 +214,7 @@ export function HeartbeatBar({ heartbeats, maxBars = 60, visualBars, density = '
           <div
             key={`${hb.from_checked_at}-${hb.to_checked_at}`}
             role="img"
-            aria-label={`${statusToAccessibleLabel(hb.status)} ${formatTime(hb.from_checked_at)}${hb.to_checked_at !== hb.from_checked_at ? ` to ${formatTime(hb.to_checked_at)}` : ''}${hb.latency_ms !== null ? ` ${hb.latency_ms}ms` : ''}`}
+            aria-label={`${statusLabel(hb.status, t)} ${formatTime(hb.from_checked_at, locale)}${hb.to_checked_at !== hb.from_checked_at ? ` ${t('heartbeat.to')} ${formatTime(hb.to_checked_at, locale)}` : ''}${hb.latency_ms !== null ? ` ${hb.latency_ms}ms` : ''}`}
             className={`${compact
               ? 'max-w-[6px] min-w-[3px] flex-1'
               : 'max-w-[6px] min-w-[3px] flex-1 sm:max-w-[8px] sm:min-w-[4px]'} rounded-sm transition-all duration-150 cursor-pointer

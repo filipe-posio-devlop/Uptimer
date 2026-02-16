@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '../app/AuthContext';
+import { useI18n } from '../app/I18nContext';
+import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
 import { ADMIN_PATH } from '../app/adminPaths';
 import {
   fetchAdminAnalyticsOverview,
@@ -94,6 +96,7 @@ function StatTile({
 
 export function AdminAnalytics() {
   const { logout } = useAuth();
+  const { locale, t } = useI18n();
 
   const [overviewRange, setOverviewRange] =
     useState<AnalyticsOverviewRange>('24h');
@@ -121,12 +124,13 @@ export function AdminAnalytics() {
   );
 
   const settings = settingsQuery.data?.settings;
+  useApplyServerLocaleSetting(settings?.site_locale);
   const siteTitle = settings?.site_title?.trim() || 'Uptimer';
   const timeZone = settings?.site_timezone || 'UTC';
 
   useEffect(() => {
-    document.title = `${siteTitle} · Analytics`;
-  }, [siteTitle]);
+    document.title = `${siteTitle} · ${t('admin_analytics.analytics_title')}`;
+  }, [siteTitle, t]);
 
   useEffect(() => {
     if (!settings) return;
@@ -182,7 +186,9 @@ export function AdminAnalytics() {
       <header className="bg-white dark:bg-slate-800 shadow-sm dark:shadow-none dark:border-b dark:border-slate-700">
         <div className="mx-auto max-w-[92rem] px-4 py-3 sm:px-6 sm:py-4 lg:px-8 flex justify-between items-center">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-slate-100">
-            {settings?.site_title ? `${settings.site_title} · Analytics` : 'Analytics'}
+            {settings?.site_title
+              ? `${settings.site_title} · ${t('admin_analytics.analytics_title')}`
+              : t('admin_analytics.analytics_title')}
           </h1>
 
           <div className="flex items-center gap-1">
@@ -199,7 +205,7 @@ export function AdminAnalytics() {
                   d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
                 />
               </svg>
-              <span className="hidden sm:inline">Dashboard</span>
+              <span className="hidden sm:inline">{t('common.dashboard')}</span>
             </Link>
             <Link
               to="/"
@@ -213,7 +219,7 @@ export function AdminAnalytics() {
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                 />
               </svg>
-              <span className="hidden sm:inline">Status</span>
+              <span className="hidden sm:inline">{t('common.status')}</span>
             </Link>
             <button
               onClick={logout}
@@ -227,7 +233,7 @@ export function AdminAnalytics() {
                   d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
                 />
               </svg>
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">{t('common.logout')}</span>
             </button>
           </div>
         </div>
@@ -238,10 +244,10 @@ export function AdminAnalytics() {
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">
-                Overview
+                {t('admin_analytics.overview_title')}
               </h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Global reliability in the selected time range.
+                {t('admin_analytics.overview_desc')}
               </p>
             </div>
             <RangeTabs
@@ -262,20 +268,20 @@ export function AdminAnalytics() {
             </div>
           ) : overviewQuery.isError || !overviewQuery.data ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300">
-              Failed to load analytics overview.
+              {t('admin_analytics.failed_overview')}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatTile
-                label="Uptime"
+                label={t('admin_analytics.uptime')}
                 value={formatPct(overviewQuery.data.totals.uptime_pct)}
               />
               <StatTile
-                label="Alerts"
+                label={t('admin_analytics.alerts')}
                 value={String(overviewQuery.data.alerts.count)}
               />
               <StatTile
-                label="Longest Outage"
+                label={t('admin_analytics.longest_outage')}
                 value={
                   overviewQuery.data.outages.longest_sec === null
                     ? '-'
@@ -284,7 +290,7 @@ export function AdminAnalytics() {
                 tone="danger"
               />
               <StatTile
-                label="MTTR"
+                label={t('admin_analytics.mttr')}
                 value={
                   overviewQuery.data.outages.mttr_sec === null
                     ? '-'
@@ -300,10 +306,10 @@ export function AdminAnalytics() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 sm:text-xl">
-                  Monitor Analytics
+                  {t('admin_analytics.monitor_title')}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Per-monitor uptime, latency, and outage history.
+                  {t('admin_analytics.monitor_desc')}
                 </p>
               </div>
               <RangeTabs
@@ -314,7 +320,7 @@ export function AdminAnalytics() {
             </div>
 
             <label className="ui-label mb-0 text-sm font-medium text-slate-700 dark:text-slate-300">
-              Monitor
+              {t('admin_analytics.monitor_label')}
               <select
                 value={selectedMonitorId ?? ''}
                 onChange={(e) => setSelectedMonitorId(Number(e.target.value))}
@@ -322,7 +328,7 @@ export function AdminAnalytics() {
                 disabled={monitorsQuery.isLoading || monitors.length === 0}
               >
                 {monitors.length === 0 ? (
-                  <option value="">No monitors available</option>
+                  <option value="">{t('admin_analytics.no_monitors_available')}</option>
                 ) : (
                   monitors.map((monitor) => (
                     <option key={monitor.id} value={monitor.id}>
@@ -336,7 +342,7 @@ export function AdminAnalytics() {
 
           {!selectedMonitor ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
-              Create a monitor first to view analytics.
+              {t('admin_analytics.create_monitor_first')}
             </div>
           ) : monitorAnalyticsQuery.isLoading ? (
             <div className="space-y-4">
@@ -355,26 +361,26 @@ export function AdminAnalytics() {
             </div>
           ) : monitorAnalyticsQuery.isError || !monitorAnalyticsQuery.data ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300">
-              Failed to load monitor analytics.
+              {t('admin_analytics.failed_monitor')}
             </div>
           ) : (
             <>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <StatTile
-                  label="Uptime"
+                  label={t('admin_analytics.uptime')}
                   value={formatPct(monitorAnalyticsQuery.data.uptime_pct)}
                 />
                 <StatTile
-                  label="Unknown"
+                  label={t('admin_analytics.unknown')}
                   value={formatPct(monitorAnalyticsQuery.data.unknown_pct)}
                 />
                 <StatTile
-                  label="Downtime"
+                  label={t('admin_analytics.downtime')}
                   value={formatSec(monitorAnalyticsQuery.data.downtime_sec)}
                   tone="danger"
                 />
                 <StatTile
-                  label="P95 Latency"
+                  label={t('admin_analytics.p95')}
                   value={
                     monitorAnalyticsQuery.data.p95_latency_ms === null
                       ? '-'
@@ -382,7 +388,7 @@ export function AdminAnalytics() {
                   }
                 />
                 <StatTile
-                  label="P50 Latency"
+                  label={t('admin_analytics.p50')}
                   value={
                     monitorAnalyticsQuery.data.p50_latency_ms === null
                       ? '-'
@@ -394,11 +400,11 @@ export function AdminAnalytics() {
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700/80 dark:bg-slate-800/60">
                   <div className="mb-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Uptime (Daily)
+                    {t('admin_analytics.daily_uptime')}
                   </div>
                   {monitorRange === '24h' ? (
                     <div className="flex h-[220px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
-                      Daily rollups are available for 7d/30d/90d.
+                      {t('admin_analytics.daily_rollup_hint')}
                     </div>
                   ) : (
                     <DailyUptimeChart points={monitorAnalyticsQuery.data.daily} />
@@ -407,7 +413,7 @@ export function AdminAnalytics() {
 
                 <div className="rounded-xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700/80 dark:bg-slate-800/60">
                   <div className="mb-2 text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Latency
+                    {t('admin_analytics.latency')}
                   </div>
                   {monitorRange === '24h' ? (
                     <LatencyChart points={monitorAnalyticsQuery.data.points} />
@@ -420,7 +426,7 @@ export function AdminAnalytics() {
               <div className="mt-5 rounded-xl border border-slate-200/80 bg-white/80 p-4 dark:border-slate-700/80 dark:bg-slate-800/60">
                 <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Outages
+                    {t('admin_analytics.outages')}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">
                     {selectedMonitor.name} (#{selectedMonitor.id})
@@ -429,11 +435,11 @@ export function AdminAnalytics() {
 
                 {outagesQuery.isLoading ? (
                   <div className="text-sm text-slate-500 dark:text-slate-400">
-                    Loading outages…
+                    {t('admin_analytics.loading_outages')}
                   </div>
                 ) : outages.length === 0 ? (
                   <div className="text-sm text-slate-500 dark:text-slate-400">
-                    No outages in this range.
+                    {t('admin_analytics.no_outages')}
                   </div>
                 ) : (
                   <>
@@ -441,22 +447,22 @@ export function AdminAnalytics() {
                       <table className="w-full min-w-[540px] text-sm">
                         <thead className="text-xs text-slate-500 dark:text-slate-400">
                           <tr>
-                            <th className="py-2 pr-4 text-left">Start</th>
-                            <th className="py-2 pr-4 text-left">End</th>
-                            <th className="py-2 pr-4 text-left">Initial Error</th>
-                            <th className="py-2 pr-4 text-left">Last Error</th>
+                            <th className="py-2 pr-4 text-left">{t('admin_analytics.outage_start')}</th>
+                            <th className="py-2 pr-4 text-left">{t('admin_analytics.outage_end')}</th>
+                            <th className="py-2 pr-4 text-left">{t('admin_analytics.initial_error')}</th>
+                            <th className="py-2 pr-4 text-left">{t('admin_analytics.last_error')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                           {outages.map((outage) => (
                             <tr key={outage.id}>
                               <td className="py-2 pr-4 whitespace-nowrap text-slate-900 dark:text-slate-100">
-                                {formatDateTime(outage.started_at, timeZone)}
+                                {formatDateTime(outage.started_at, timeZone, locale)}
                               </td>
                               <td className="py-2 pr-4 whitespace-nowrap text-slate-900 dark:text-slate-100">
                                 {outage.ended_at
-                                  ? formatDateTime(outage.ended_at, timeZone)
-                                  : 'Ongoing'}
+                                  ? formatDateTime(outage.ended_at, timeZone, locale)
+                                  : t('admin_analytics.ongoing')}
                               </td>
                               <td className="py-2 pr-4 text-slate-600 dark:text-slate-400">
                                 {outage.initial_error ?? '-'}
@@ -478,8 +484,8 @@ export function AdminAnalytics() {
                           disabled={outagesQuery.isFetchingNextPage}
                         >
                           {outagesQuery.isFetchingNextPage
-                            ? 'Loading…'
-                            : 'Load more'}
+                            ? t('common.loading_ellipsis')
+                            : t('common.load_more')}
                         </Button>
                       </div>
                     )}

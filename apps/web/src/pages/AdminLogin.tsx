@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 
+import { useI18n } from '../app/I18nContext';
+import { useApplyServerLocaleSetting } from '../app/useApplyServerLocaleSetting';
+import { fetchStatus } from '../api/client';
 import { useAuth } from '../app/AuthContext';
 import { ADMIN_PATH } from '../app/adminPaths';
 import { Button, Card, INPUT_CLASS } from '../components/ui';
 
 export function AdminLogin() {
+  const { t } = useI18n();
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,9 +22,16 @@ export function AdminLogin() {
     (location.state as { from?: { pathname: string } })?.from?.pathname ||
     ADMIN_PATH;
 
+  const statusQuery = useQuery({
+    queryKey: ['status'],
+    queryFn: fetchStatus,
+    staleTime: 60_000,
+  });
+  useApplyServerLocaleSetting(statusQuery.data?.site_locale);
+
   useEffect(() => {
-    document.title = 'Uptimer · Admin Login';
-  }, []);
+    document.title = t('admin_login.document_title');
+  }, [t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +39,7 @@ export function AdminLogin() {
 
     const trimmed = token.trim();
     if (!trimmed) {
-      setError('Please enter a token');
+      setError(t('admin_login.error_enter_token'));
       return;
     }
 
@@ -38,7 +50,7 @@ export function AdminLogin() {
       await login(trimmed);
       navigate(from, { replace: true });
     } catch {
-      setError('Invalid token');
+      setError(t('admin_login.error_invalid_token'));
     } finally {
       setIsSubmitting(false);
     }
@@ -64,10 +76,10 @@ export function AdminLogin() {
             </svg>
           </div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-            Admin Login
+            {t('admin_login.title')}
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Enter your admin token to continue
+            {t('admin_login.subtitle')}
           </p>
         </div>
 
@@ -77,7 +89,7 @@ export function AdminLogin() {
               htmlFor="token"
               className="ui-label text-sm font-medium text-slate-700 dark:text-slate-300"
             >
-              Token
+              {t('admin_login.token')}
             </label>
             <input
               type="password"
@@ -85,7 +97,7 @@ export function AdminLogin() {
               value={token}
               onChange={(e) => setToken(e.target.value)}
               className={INPUT_CLASS}
-              placeholder="Enter your admin token"
+              placeholder={t('admin_login.placeholder')}
               autoFocus
             />
           </div>
@@ -93,7 +105,7 @@ export function AdminLogin() {
           {error && <p className="ui-error text-sm">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? 'Checking...' : 'Login'}
+            {isSubmitting ? t('admin_login.submitting') : t('admin_login.submit')}
           </Button>
         </form>
 
@@ -102,7 +114,7 @@ export function AdminLogin() {
             to="/"
             className="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
           >
-            Back to Status Page
+            {t('admin_login.back_to_status')}
           </Link>
         </div>
       </Card>

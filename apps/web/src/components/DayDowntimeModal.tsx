@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react';
 
 import type { Incident, MaintenanceWindow, Outage } from '../api/types';
+import { useI18n } from '../app/I18nContext';
 import { Button, MODAL_OVERLAY_CLASS, MODAL_PANEL_CLASS } from './ui';
 import { formatDate, formatTime } from '../utils/datetime';
 import { computeDayDowntimeIntervals, computeIntervalTotalSeconds } from './UptimeBar30d';
 
-function formatDay(ts: number, timeZone?: string): string {
-  return formatDate(ts, timeZone);
+function formatDay(ts: number, timeZone?: string, locale?: string): string {
+  return formatDate(ts, timeZone, locale);
 }
 
-function formatClock(ts: number, timeZone?: string): string {
-  return timeZone ? formatTime(ts, { timeZone, hour12: false }) : formatTime(ts, { hour12: false });
+function formatClock(ts: number, timeZone?: string, locale?: string): string {
+  return timeZone
+    ? formatTime(ts, { timeZone, hour12: false, ...(locale ? { locale } : {}) })
+    : formatTime(ts, { hour12: false, ...(locale ? { locale } : {}) });
 }
 
 function formatSec(totalSeconds: number): string {
@@ -170,6 +173,7 @@ export function DayDowntimeModal({
   onClose: () => void;
   timeZone?: string;
 }) {
+  const { locale, t } = useI18n();
   const [nowSec] = useState(() => Math.floor(Date.now() / 1000));
 
   const intervals = useMemo(
@@ -213,22 +217,22 @@ export function DayDowntimeModal({
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <div className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1">
-              Downtime
+              {t('day_downtime.title')}
             </div>
             <h2 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-slate-100">
-              {formatDay(dayStartAt, timeZone)}
+              {formatDay(dayStartAt, timeZone, locale)}
             </h2>
             <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Total: {formatSec(totalDowntimeSec)}
+              {t('common.total')}: {formatSec(totalDowntimeSec)}
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
-            Close
+            {t('common.close')}
           </Button>
         </div>
 
         {intervals.length === 0 ? (
-          <div className="text-slate-500 dark:text-slate-400">No downtime recorded for this day.</div>
+          <div className="text-slate-500 dark:text-slate-400">{t('day_downtime.no_downtime')}</div>
         ) : (
           <div className="space-y-3">
             {sortedEntries.map((entry, idx) => {
@@ -240,7 +244,7 @@ export function DayDowntimeModal({
                     className="flex items-center justify-between gap-4 p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50"
                   >
                     <div className="text-sm text-slate-700 dark:text-slate-200">
-                      {formatClock(it.start, timeZone)} – {formatClock(it.end, timeZone)}
+                      {formatClock(it.start, timeZone, locale)} – {formatClock(it.end, timeZone, locale)}
                     </div>
                     <div className="text-sm font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                       {formatSec(it.end - it.start)}
@@ -260,10 +264,10 @@ export function DayDowntimeModal({
                 >
                   <div className="flex items-center justify-between gap-4 mb-2">
                     <div className={`text-sm font-medium ${isMaintenance ? 'text-blue-700 dark:text-blue-300' : 'text-amber-800 dark:text-amber-200'}`}>
-                      {isMaintenance ? 'Maintenance' : 'Incident'}
+                      {isMaintenance ? t('day_downtime.kind_maintenance') : t('day_downtime.kind_incident')}
                     </div>
                     <div className={`text-xs tabular-nums ${isMaintenance ? 'text-blue-700/80 dark:text-blue-300/80' : 'text-amber-800/80 dark:text-amber-200/80'}`}>
-                      {formatClock(g.start, timeZone)} – {formatClock(g.end, timeZone)}
+                      {formatClock(g.start, timeZone, locale)} – {formatClock(g.end, timeZone, locale)}
                     </div>
                   </div>
 
@@ -282,7 +286,7 @@ export function DayDowntimeModal({
                         className="flex items-center justify-between gap-4 p-3 rounded-lg bg-white/70 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700"
                       >
                         <div className="text-sm text-slate-700 dark:text-slate-200">
-                          {formatClock(it.start, timeZone)} – {formatClock(it.end, timeZone)}
+                          {formatClock(it.start, timeZone, locale)} – {formatClock(it.end, timeZone, locale)}
                         </div>
                         <div className="text-sm font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                           {formatSec(it.end - it.start)}

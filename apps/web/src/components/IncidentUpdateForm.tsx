@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CreateIncidentUpdateInput, IncidentStatus } from '../api/types';
+import { useI18n } from '../app/I18nContext';
+import { incidentStatusLabel } from '../i18n/labels';
 import { Markdown } from './Markdown';
 import {
   Button,
@@ -18,6 +20,7 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
   onCancel: () => void;
   isLoading?: boolean;
 }) {
+  const { t } = useI18n();
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<Exclude<IncidentStatus, 'resolved'> | ''>('');
   const normalized = useMemo(() => message.trim(), [message]);
@@ -28,28 +31,43 @@ export function IncidentUpdateForm({ onSubmit, onCancel, isLoading }: {
       onSubmit(status === '' ? { message: normalized } : { message: normalized, status });
     }}>
       <div>
-        <label className={labelClass}>Status (optional)</label>
+        <label className={labelClass}>{t('incident_update.status')}</label>
         <select value={status} onChange={(e) => setStatus(e.target.value as Exclude<IncidentStatus, 'resolved'> | '')} className={selectClass}>
-          <option value="">Keep current</option>
-          {statusOptions.map((it) => <option key={it} value={it}>{it}</option>)}
+          <option value="">{t('incident_update.status_placeholder')}</option>
+          {statusOptions.map((it) => (
+            <option key={it} value={it}>
+              {incidentStatusLabel(it, t)}
+            </option>
+          ))}
         </select>
       </div>
 
       <div>
-        <label className={labelClass}>Update message (Markdown)</label>
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={5} className={`${textareaClass} font-mono`} placeholder="What changed?" required />
+        <label className={labelClass}>{t('incident_update.message')}</label>
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          rows={5}
+          className={`${textareaClass} font-mono`}
+          placeholder={t('incident_update.message_placeholder')}
+          required
+        />
       </div>
 
       {normalized && (
         <div>
-          <div className={labelClass}>Preview</div>
+          <div className={labelClass}>{t('common.preview')}</div>
           <div className="border border-slate-200 dark:border-slate-600 rounded-lg p-4 bg-slate-50 dark:bg-slate-700/50"><Markdown text={normalized} /></div>
         </div>
       )}
 
       <div className="flex gap-3 pt-2">
-        <Button type="button" variant="secondary" onClick={onCancel} className="flex-1">Cancel</Button>
-        <Button type="submit" disabled={isLoading || !normalized} className="flex-1">{isLoading ? 'Saving...' : 'Post Update'}</Button>
+        <Button type="button" variant="secondary" onClick={onCancel} className="flex-1">
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" disabled={isLoading || !normalized} className="flex-1">
+          {isLoading ? t('common.saving') : t('incident_update.post_update')}
+        </Button>
       </div>
     </form>
   );

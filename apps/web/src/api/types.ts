@@ -3,6 +3,8 @@
 export type MonitorStatus = 'up' | 'down' | 'maintenance' | 'paused' | 'unknown';
 export type CheckStatus = 'up' | 'down' | 'maintenance' | 'unknown';
 export type MonitorType = 'http' | 'tcp';
+export type SupportedLocale = 'en' | 'zh-CN' | 'zh-TW' | 'ja' | 'es';
+export type LocaleSetting = 'auto' | SupportedLocale;
 
 export type IncidentStatus = 'investigating' | 'identified' | 'monitoring' | 'resolved';
 export type IncidentImpact = 'none' | 'minor' | 'major' | 'critical';
@@ -88,6 +90,7 @@ export interface StatusResponse {
   generated_at: number;
   site_title: string;
   site_description: string;
+  site_locale: LocaleSetting;
   site_timezone: string;
   uptime_rating_level: 1 | 2 | 3 | 4 | 5;
   overall_status: MonitorStatus;
@@ -459,6 +462,7 @@ export interface ApiError {
 export interface AdminSettings {
   site_title: string;
   site_description: string;
+  site_locale: LocaleSetting;
   site_timezone: string;
 
   retention_check_results_days: number;

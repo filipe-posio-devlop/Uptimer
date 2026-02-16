@@ -4,6 +4,7 @@ import type {
   ReactNode,
 } from 'react';
 
+import { useI18n } from '../app/I18nContext';
 import { useTheme } from '../app/ThemeContext';
 
 export function cn(...parts: Array<string | false | null | undefined>): string {
@@ -265,12 +266,16 @@ const SystemIcon = () => (
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
+  const { t } = useI18n();
 
   const cycleTheme = () => {
     if (theme === 'system') setTheme('light');
     else if (theme === 'light') setTheme('dark');
     else setTheme('system');
   };
+
+  const themeLabel = t(`theme.${theme}`);
+  const title = t('theme.title', { value: themeLabel });
 
   return (
     <button
@@ -281,8 +286,8 @@ export function ThemeToggle() {
         'dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
         'transition-colors',
       )}
-      title={`Theme: ${theme}`}
-      aria-label={`Theme: ${theme}`}
+      title={title}
+      aria-label={title}
     >
       {theme === 'light' && <SunIcon />}
       {theme === 'dark' && <MoonIcon />}

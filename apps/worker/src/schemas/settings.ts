@@ -5,6 +5,8 @@ export const settingsPatchInputSchema = z
     site_title: z.string().min(1).max(100).optional(),
     site_description: z.string().max(500).optional(),
 
+    site_locale: z.enum(['auto', 'en', 'zh-CN', 'zh-TW', 'ja', 'es']).optional(),
+
     // IANA timezone, e.g. 'UTC', 'Asia/Shanghai'.
     site_timezone: z.string().min(1).max(64).optional(),
 
@@ -18,9 +20,6 @@ export const settingsPatchInputSchema = z
 
     uptime_rating_level: z.number().int().min(1).max(5).optional(),
   })
-  .strict()
-  .refine((val) => Object.keys(val).length > 0, {
-    message: 'At least one field must be provided',
-  });
+  .strict();
 
 export type SettingsPatchInput = z.infer<typeof settingsPatchInputSchema>;
