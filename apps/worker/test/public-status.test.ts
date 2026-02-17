@@ -1,0 +1,199 @@
+import { describe, expect, it } from 'vitest';
+
+import { computePublicStatusPayload } from '../src/public/status';
+import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
+
+describe('public/status payload regression', () => {
+  it('keeps monitor heartbeats and uptime data stable when parallel reads are used', async () => {
+    const now = 1_728_000_000;
+
+    const handlers: FakeD1QueryHandler[] = [
+      {
+        match: 'from monitors m',
+        all: () => [
+          {
+            id: 11,
+            name: 'API Gateway',
+            type: 'http',
+            group_name: 'Core',
+            group_sort_order: 0,
+            sort_order: 0,
+            interval_sec: 60,
+            created_at: now - 40 * 86_400,
+            state_status: 'up',
+            last_checked_at: now - 30,
+            last_latency_ms: 84,
+          },
+        ],
+      },
+      {
+        match: 'select distinct mwm.monitor_id',
+        all: () => [],
+      },
+      {
+        match: 'select value from settings where key = ?1',
+        first: (args) => (args[0] === 'uptime_rating_level' ? { value: '4' } : null),
+      },
+      {
+        match: 'row_number() over',
+        all: () => [
+          { monitor_id: 11, checked_at: now - 60, status: 'up', latency_ms: 80 },
+          { monitor_id: 11, checked_at: now - 120, status: 'down', latency_ms: null },
+        ],
+      },
+      {
+        match: 'from monitor_daily_rollups',
+        all: () => [
+          {
+            monitor_id: 11,
+            day_start_at: now - 86_400,
+            total_sec: 86_400,
+            downtime_sec: 0,
+            unknown_sec: 0,
+            uptime_sec: 86_400,
+          },
+        ],
+      },
+      {
+        match: 'from incidents',
+        all: () => [],
+      },
+      {
+        match: 'from maintenance_windows where starts_at <= ?1 and ends_at > ?1',
+        all: () => [],
+      },
+      {
+        match: 'from maintenance_windows where starts_at > ?1',
+        all: () => [],
+      },
+      {
+        match: 'select key, value from settings',
+        all: () => [
+          { key: 'site_title', value: 'Status Hub' },
+          { key: 'site_description', value: 'Production services' },
+          { key: 'site_locale', value: 'en' },
+          { key: 'site_timezone', value: 'UTC' },
+        ],
+      },
+    ];
+
+    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+
+    expect(payload.site_title).toBe('Status Hub');
+    expect(payload.uptime_rating_level).toBe(4);
+    expect(payload.summary).toEqual({
+      up: 1,
+      down: 0,
+      maintenance: 0,
+      paused: 0,
+      unknown: 0,
+    });
+    expect(payload.overall_status).toBe('up');
+    expect(payload.banner).toMatchObject({
+      source: 'monitors',
+      status: 'operational',
+      title: 'All Systems Operational',
+    });
+
+    expect(payload.monitors).toHaveLength(1);
+    expect(payload.monitors[0]?.heartbeats).toEqual([
+      { checked_at: now - 60, status: 'up', latency_ms: 80 },
+      { checked_at: now - 120, status: 'down', latency_ms: null },
+    ]);
+    expect(payload.monitors[0]?.uptime_days).toHaveLength(1);
+    expect(payload.monitors[0]?.uptime_30d).toMatchObject({
+      total_sec: 86_400,
+      downtime_sec: 0,
+      unknown_sec: 0,
+      uptime_sec: 86_400,
+      uptime_pct: 100,
+    });
+  });
+
+  it('keeps incident banner and incident details stable when settings query runs in parallel', async () => {
+    const now = 1_728_123_456;
+
+    const handlers: FakeD1QueryHandler[] = [
+      {
+        match: 'from monitors m',
+        all: () => [],
+      },
+      {
+        match: 'select value from settings where key = ?1',
+        first: (args) => (args[0] === 'uptime_rating_level' ? { value: '3' } : null),
+      },
+      {
+        match: 'from incidents',
+        all: () => [
+          {
+            id: 5,
+            title: 'Core API latency spike',
+            status: 'identified',
+            impact: 'major',
+            message: 'Investigating upstream dependency saturation',
+            started_at: now - 900,
+            resolved_at: null,
+          },
+        ],
+      },
+      {
+        match: 'from maintenance_windows where starts_at <= ?1 and ends_at > ?1',
+        all: () => [],
+      },
+      {
+        match: 'from maintenance_windows where starts_at > ?1',
+        all: () => [],
+      },
+      {
+        match: 'from incident_monitors',
+        all: () => [{ incident_id: 5, monitor_id: 11 }],
+      },
+      {
+        match: 'from incident_updates',
+        all: () => [
+          {
+            id: 9,
+            incident_id: 5,
+            status: 'monitoring',
+            message: 'Mitigation deployed, observing recovery',
+            created_at: now - 300,
+          },
+        ],
+      },
+      {
+        match: 'select key, value from settings',
+        all: () => [{ key: 'site_title', value: 'Status Hub' }],
+      },
+    ];
+
+    const payload = await computePublicStatusPayload(createFakeD1Database(handlers), now);
+
+    expect(payload.overall_status).toBe('unknown');
+    expect(payload.banner).toMatchObject({
+      source: 'incident',
+      status: 'major_outage',
+      title: 'Major Outage',
+      incident: {
+        id: 5,
+        title: 'Core API latency spike',
+        status: 'identified',
+        impact: 'major',
+      },
+    });
+
+    expect(payload.active_incidents).toHaveLength(1);
+    expect(payload.active_incidents[0]).toMatchObject({
+      id: 5,
+      monitor_ids: [11],
+    });
+    expect(payload.active_incidents[0]?.updates).toEqual([
+      {
+        id: 9,
+        incident_id: 5,
+        status: 'monitoring',
+        message: 'Mitigation deployed, observing recovery',
+        created_at: now - 300,
+      },
+    ]);
+  });
+});
