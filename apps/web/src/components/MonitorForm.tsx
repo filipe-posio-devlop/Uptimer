@@ -249,7 +249,6 @@ export function MonitorForm(props: CreateProps | EditProps) {
       if (type === 'http') {
         data.http_method = httpMethod;
 
-        // Only change advanced fields when the user explicitly opens that section.
         if (showAdvancedHttp) {
           if (headersParse.ok) {
             data.http_headers_json =
@@ -264,6 +263,13 @@ export function MonitorForm(props: CreateProps | EditProps) {
           data.response_keyword = responseKeyword.trim().length > 0 ? responseKeyword.trim() : null;
           data.response_forbidden_keyword =
             responseForbiddenKeyword.trim().length > 0 ? responseForbiddenKeyword.trim() : null;
+        } else {
+          // In edit mode, hiding advanced options means reset all persisted advanced HTTP settings.
+          data.http_headers_json = null;
+          data.expected_status_json = null;
+          data.http_body = null;
+          data.response_keyword = null;
+          data.response_forbidden_keyword = null;
         }
       }
 
