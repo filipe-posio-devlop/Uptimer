@@ -4,6 +4,24 @@ export type FakeD1QueryHandler = {
   match: QueryMatcher;
   all?: (args: unknown[], normalizedSql: string) => unknown[] | Promise<unknown[]>;
   first?: (args: unknown[], normalizedSql: string) => unknown | null | Promise<unknown | null>;
+  run?: (
+    args: unknown[],
+    normalizedSql: string,
+  ) =>
+    | number
+    | {
+        success?: boolean;
+        results?: unknown[];
+        meta?: Partial<D1Result['meta']>;
+      }
+    | Promise<
+        | number
+        | {
+            success?: boolean;
+            results?: unknown[];
+            meta?: Partial<D1Result['meta']>;
+          }
+      >;
 };
 
 function normalizeSql(sql: string): string {
@@ -55,12 +73,50 @@ class FakePreparedStatement {
     const row = await handler.first(this.args, this.normalizedSql);
     return (row ?? null) as T | null;
   }
+
+  async run<T = unknown>(): Promise<D1Result<T>> {
+    const handler = this.handlers.find((item) => item.run && matchesQuery(this.normalizedSql, item.match));
+    if (!handler || !handler.run) {
+      throw new Error(`No fake D1 run() handler matched SQL: ${this.sql}`);
+    }
+
+    const outcome = await handler.run(this.args, this.normalizedSql);
+    if (typeof outcome === 'number') {
+      return {
+        success: true,
+        results: [],
+        meta: { changes: outcome },
+      } as unknown as D1Result<T>;
+    }
+
+    const meta =
+      outcome?.meta !== undefined
+        ? { ...outcome.meta }
+        : {};
+
+    return {
+      success: outcome?.success ?? true,
+      results: (outcome?.results ?? []) as T[],
+      meta,
+    } as unknown as D1Result<T>;
+  }
 }
 
 export function createFakeD1Database(handlers: FakeD1QueryHandler[]): D1Database {
   return {
     prepare(sql: string) {
       return new FakePreparedStatement(sql, handlers) as unknown as D1PreparedStatement;
+    },
+    async batch<T = unknown>(statements: D1PreparedStatement[]) {
+      const results: D1Result<T>[] = [];
+      for (const statement of statements) {
+        const run = (statement as { run?: () => Promise<D1Result<T>> }).run;
+        if (!run) {
+          throw new Error('Fake D1 batch() received a statement without run()');
+        }
+        results.push(await run.call(statement));
+      }
+      return results;
     },
   } as unknown as D1Database;
 }
