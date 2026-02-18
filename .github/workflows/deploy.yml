@@ -77,7 +77,8 @@ jobs:
       # - UPTIMER_PREFIX: Base name for Worker/Pages/D1. Defaults to repo name slug.
       # - UPTIMER_WORKER_NAME / UPTIMER_PAGES_PROJECT / UPTIMER_D1_NAME: Override individual names.
       # - UPTIMER_D1_BINDING: D1 binding name in Worker (default: DB).
-      # - UPTIMER_API_BASE: Web build-time API base (defaults to derived workers.dev URL + /api/v1).
+      # - UPTIMER_API_BASE / UPTIMER_API_ORIGIN: Either one can be set; workflow derives the other.
+      #   (API_BASE drives Vite build requests; API_ORIGIN drives Pages HTML preload worker.)
       #
       # Required secret:
       # - UPTIMER_ADMIN_TOKEN: Admin dashboard access key; written to Worker secret ADMIN_TOKEN.
@@ -321,23 +322,72 @@ jobs:
           set -euo pipefail
           printf '%s' "$UPTIMER_ADMIN_TOKEN" | pnpm exec wrangler secret put ADMIN_TOKEN --name "$WORKER_NAME" --config "$WRANGLER_CI_CONFIG"
 
-      - name: Compute web API base (for Vite build)
+      - name: Resolve API base + origin (for Vite build + Pages preload)
         shell: bash
         run: |
           set -euo pipefail
 
+          trim_trailing_slashes() {
+            local value="$1"
+            while [[ "$value" == */ ]]; do
+              value="${value%/}"
+            done
+            printf '%s' "$value"
+          }
+
+          derive_api_base_from_origin() {
+            local origin="$1"
+            local trimmed
+            trimmed="$(trim_trailing_slashes "$origin")"
+            if [[ "$trimmed" == */api/v1 ]]; then
+              printf '%s' "$trimmed"
+            else
+              printf '%s/api/v1' "$trimmed"
+            fi
+          }
+
           if [[ -n "${UPTIMER_API_BASE:-}" ]]; then
             api_base="$UPTIMER_API_BASE"
+          elif [[ -n "${UPTIMER_API_ORIGIN:-}" ]]; then
+            api_base="$(derive_api_base_from_origin "$UPTIMER_API_ORIGIN")"
           elif [[ -n "${WORKER_URL:-}" ]]; then
             api_base="${WORKER_URL}/api/v1"
           else
             api_base="/api/v1"
           fi
 
+          api_origin=""
+          if [[ -n "${UPTIMER_API_ORIGIN:-}" ]]; then
+            api_origin="$UPTIMER_API_ORIGIN"
+          elif [[ -n "${UPTIMER_API_BASE:-}" ]]; then
+            if [[ "$UPTIMER_API_BASE" =~ ^https?://[^/]+ ]]; then
+              api_origin="${BASH_REMATCH[0]}"
+            fi
+            if [[ -z "$api_origin" && -n "${WORKER_URL:-}" ]]; then
+              api_origin="$WORKER_URL"
+            fi
+          elif [[ -n "${WORKER_URL:-}" ]]; then
+            api_origin="$WORKER_URL"
+          fi
+
+          if [[ -n "${UPTIMER_API_BASE:-}" && -n "${UPTIMER_API_ORIGIN:-}" ]]; then
+            implied_base="$(derive_api_base_from_origin "$UPTIMER_API_ORIGIN")"
+            if [[ "$UPTIMER_API_BASE" != "$implied_base" ]]; then
+              echo "::warning::UPTIMER_API_BASE and UPTIMER_API_ORIGIN resolve to different API bases. UPTIMER_API_BASE wins for web build."
+            fi
+          fi
+
           echo "Using VITE_API_BASE=$api_base"
           echo "VITE_API_BASE=$api_base" >> "$GITHUB_ENV"
+          echo "UPTIMER_RESOLVED_API_BASE=$api_base" >> "$GITHUB_ENV"
+
+          if [[ -n "$api_origin" ]]; then
+            echo "Using UPTIMER_API_ORIGIN=$api_origin"
+            echo "UPTIMER_RESOLVED_API_ORIGIN=$api_origin" >> "$GITHUB_ENV"
+          fi
         env:
           UPTIMER_API_BASE: ${{ vars.UPTIMER_API_BASE }}
+          UPTIMER_API_ORIGIN: ${{ vars.UPTIMER_API_ORIGIN }}
           WORKER_URL: ${{ steps.deploy_worker.outputs.worker_url }}
 
       - name: Build Pages (Vite)
@@ -378,16 +428,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          api_origin="${UPTIMER_API_ORIGIN:-${WORKER_URL:-}}"
+          api_origin="${UPTIMER_RESOLVED_API_ORIGIN:-}"
           if [[ -z "$api_origin" ]]; then
-            echo "Skipping Pages secret: no UPTIMER_API_ORIGIN / WORKER_URL"
+            echo "Skipping Pages secret: no UPTIMER_API_ORIGIN / absolute UPTIMER_API_BASE / WORKER_URL"
             exit 0
           fi
 
           printf %s "$api_origin" | pnpm -C apps/worker exec wrangler --cwd ../.. pages secret put UPTIMER_API_ORIGIN --project-name "$PAGES_PROJECT"
-        env:
-          UPTIMER_API_ORIGIN: ${{ vars.UPTIMER_API_ORIGIN }}
-          WORKER_URL: ${{ steps.deploy_worker.outputs.worker_url }}
 
       - name: Deploy Pages (idempotent)
         shell: bash

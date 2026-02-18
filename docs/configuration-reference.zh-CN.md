@@ -26,10 +26,12 @@ Uptimer 所有可配置参数，按部署时、运行时、本地开发分类。
 | `UPTIMER_PAGES_PROJECT` | `${UPTIMER_PREFIX}`  | Pages 项目名                                |
 | `UPTIMER_D1_NAME`       | `${UPTIMER_PREFIX}`  | D1 数据库名                                 |
 | `UPTIMER_D1_BINDING`    | `DB`                 | Worker 中 D1 binding 名称                   |
-| `UPTIMER_API_BASE`      | 自动推导或 `/api/v1` | Web 构建时 API 基础路径                     |
-| `UPTIMER_API_ORIGIN`    | —                    | Pages Secret `UPTIMER_API_ORIGIN` 的值      |
+| `UPTIMER_API_BASE`      | 自动推导或 `/api/v1` | API 地址（如 `https://my-worker.example.com/api/v1` 或 `/api/v1`） |
+| `UPTIMER_API_ORIGIN`    | 自动推导             | API 源地址（如 `https://my-worker.example.com`）；自动拼接 `/api/v1` |
 | `VITE_ADMIN_PATH`       | —                    | 管理后台路径（可被 Secret 覆盖）            |
 | `UPTIMER_ADMIN_PATH`    | —                    | 兼容变量名（`VITE_ADMIN_PATH` 的 fallback） |
+
+> **API 地址**：通常无需配置——工作流会自动从 Worker URL 推导。仅当 API 使用自定义域名时，设置 `UPTIMER_API_BASE` 或 `UPTIMER_API_ORIGIN` 其中一个即可，两者只是格式不同。
 
 ## 2. Worker 运行时
 
@@ -57,7 +59,7 @@ Uptimer 所有可配置参数，按部署时、运行时、本地开发分类。
 | `VITE_ADMIN_PATH` | `/admin`  | 管理后台路由前缀        |
 | `VITE_API_BASE`   | `/api/v1` | 前端访问 API 的基础 URL |
 
-> `VITE_API_BASE` 在 CI 中由部署工作流计算并注入（优先使用 `UPTIMER_API_BASE`）。
+> `VITE_API_BASE` 由部署工作流自动注入，来源依次为 `UPTIMER_API_BASE`、`UPTIMER_API_ORIGIN`、Worker URL，均不可用时回退为 `/api/v1`。
 
 ## 4. 运行时设置（D1）
 

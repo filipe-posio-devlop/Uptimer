@@ -55,11 +55,13 @@ Override default naming and routing:
 | `UPTIMER_PAGES_PROJECT`                  | `${UPTIMER_PREFIX}`       | Pages project name           |
 | `UPTIMER_D1_NAME`                        | `${UPTIMER_PREFIX}`       | D1 database name             |
 | `UPTIMER_D1_BINDING`                     | `DB`                      | D1 binding name in Worker    |
-| `UPTIMER_API_BASE`                       | Auto-derived or `/api/v1` | API base URL for web build   |
-| `UPTIMER_API_ORIGIN`                     | —                         | Pages Secret value           |
+| `UPTIMER_API_BASE`                       | Auto-derived or `/api/v1` | API address (e.g. `https://my-worker.example.com/api/v1` or `/api/v1`) |
+| `UPTIMER_API_ORIGIN`                     | Auto-derived              | API origin (e.g. `https://my-worker.example.com`); `/api/v1` appended automatically |
 | `VITE_ADMIN_PATH` / `UPTIMER_ADMIN_PATH` | —                         | Custom admin dashboard path  |
 
 > If no naming variables are set, the workflow uses the repository name slug as the default prefix. This keeps names stable across forks.
+>
+> **API address**: Usually no configuration needed — the workflow detects the Worker URL automatically. Set `UPTIMER_API_BASE` or `UPTIMER_API_ORIGIN` only if the API is on a custom domain. Both accept the same information in different formats; setting one is enough.
 
 ## Cloudflare Token Permissions
 
@@ -120,9 +122,9 @@ monitors, monitor_state, check_results, outages, settings
 
 ### Pages builds but API returns 404 or HTML
 
-- Check `UPTIMER_API_BASE` is correct
-- If not set, the workflow derives it from the Worker URL + `/api/v1`
-- "API returned HTML instead of JSON" usually means the API base or route is misaligned
+- Verify that `UPTIMER_API_BASE` or `UPTIMER_API_ORIGIN` points to your Worker, not to the Pages site
+- "API returned HTML instead of JSON" usually means the URL is hitting Pages (which returns HTML) instead of the Worker
+- If neither variable is set, the workflow uses the Worker URL automatically — check that it resolved correctly in the deploy logs
 
 ### Admin returns 401
 

@@ -55,11 +55,13 @@
 | `UPTIMER_PAGES_PROJECT`                  | `${UPTIMER_PREFIX}`  | Pages 项目名              |
 | `UPTIMER_D1_NAME`                        | `${UPTIMER_PREFIX}`  | D1 数据库名               |
 | `UPTIMER_D1_BINDING`                     | `DB`                 | Worker 中 D1 binding 名称 |
-| `UPTIMER_API_BASE`                       | 自动推导或 `/api/v1` | Web 构建时的 API 基础路径 |
-| `UPTIMER_API_ORIGIN`                     | —                    | Pages Secret 值           |
+| `UPTIMER_API_BASE`                       | 自动推导或 `/api/v1` | API 地址（如 `https://my-worker.example.com/api/v1` 或 `/api/v1`） |
+| `UPTIMER_API_ORIGIN`                     | 自动推导             | API 源地址（如 `https://my-worker.example.com`）；自动拼接 `/api/v1` |
 | `VITE_ADMIN_PATH` / `UPTIMER_ADMIN_PATH` | —                    | 自定义管理后台路径        |
 
 > 若不配置命名变量，工作流会使用仓库名 slug 作为默认前缀。这在 fork 场景下能保持命名稳定。
+>
+> **API 地址**：通常无需配置——工作流会自动从 Worker URL 推导。仅当 API 使用自定义域名时，设置 `UPTIMER_API_BASE` 或 `UPTIMER_API_ORIGIN` 其中一个即可，两者只是格式不同。
 
 ## Cloudflare Token 权限
 
@@ -120,9 +122,9 @@ monitors, monitor_state, check_results, outages, settings
 
 ### Pages 构建成功但 API 返回 404 或 HTML
 
-- 检查 `UPTIMER_API_BASE` 是否正确
-- 若未设置，工作流会从 Worker URL + `/api/v1` 推导
-- "API returned HTML instead of JSON" 通常意味着 API Base 或路由未对齐
+- 确认 `UPTIMER_API_BASE` 或 `UPTIMER_API_ORIGIN` 指向的是 Worker 地址，而非 Pages 地址
+- "API returned HTML instead of JSON" 通常意味着请求打到了 Pages（返回 HTML）而非 Worker
+- 都未设置时，工作流会自动使用 Worker URL — 检查部署日志中该值是否正确解析
 
 ### 管理端返回 401
 

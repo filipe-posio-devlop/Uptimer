@@ -26,10 +26,12 @@ Source: `.github/workflows/deploy.yml`
 | `UPTIMER_PAGES_PROJECT` | `${UPTIMER_PREFIX}`       | Pages project name                                 |
 | `UPTIMER_D1_NAME`       | `${UPTIMER_PREFIX}`       | D1 database name                                   |
 | `UPTIMER_D1_BINDING`    | `DB`                      | D1 binding name in Worker                          |
-| `UPTIMER_API_BASE`      | Auto-derived or `/api/v1` | API base URL for web build                         |
-| `UPTIMER_API_ORIGIN`    | —                         | Pages Secret `UPTIMER_API_ORIGIN` value            |
+| `UPTIMER_API_BASE`      | Auto-derived or `/api/v1` | API address (e.g. `https://my-worker.example.com/api/v1` or `/api/v1`) |
+| `UPTIMER_API_ORIGIN`    | Auto-derived              | API origin (e.g. `https://my-worker.example.com`); `/api/v1` appended automatically |
 | `VITE_ADMIN_PATH`       | —                         | Admin dashboard path (overridden by Secret if set) |
 | `UPTIMER_ADMIN_PATH`    | —                         | Fallback variable for `VITE_ADMIN_PATH`            |
+
+> **API address**: Usually no configuration needed — the workflow detects the Worker URL automatically. Set `UPTIMER_API_BASE` or `UPTIMER_API_ORIGIN` only if the API is on a custom domain. Both accept the same information in different formats; setting one is enough.
 
 ## 2. Worker Runtime
 
@@ -57,7 +59,7 @@ Source: `apps/web/.env.example`
 | `VITE_ADMIN_PATH` | `/admin`  | Admin dashboard route prefix       |
 | `VITE_API_BASE`   | `/api/v1` | API base URL for frontend requests |
 
-> `VITE_API_BASE` is computed and injected by the deploy workflow (using `UPTIMER_API_BASE` if set).
+> `VITE_API_BASE` is injected by the deploy workflow from `UPTIMER_API_BASE`, `UPTIMER_API_ORIGIN`, or the Worker URL. Falls back to `/api/v1` if none are available.
 
 ## 4. Runtime Settings (D1)
 
