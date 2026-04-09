@@ -3,7 +3,9 @@ import { writeFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 import { computePublicHomepagePayload } from '../src/public/homepage';
+import { buildHomepageRenderArtifact } from '../src/snapshots/public-homepage';
 import { createFakeD1Database, type FakeD1QueryHandler } from './helpers/fake-d1';
+import pageWorker from '../../web/public/_worker.js';
 
 type Scenario = {
   name: string;
@@ -19,12 +21,30 @@ type Sample = {
   rollupRows: number;
 };
 
+type RootMissScenario = {
+  name: string;
+  monitorCount: number;
+};
+
+type RootMissSample = {
+  elapsedMs: number;
+  artifactKB: number;
+  preloadKB: number;
+  snapshotKB: number;
+};
+
 const BENCH_LABEL = process.env.HOMEPAGE_BENCH_LABEL ?? 'current-working-tree';
 const OUTPUT_PATH = process.env.HOMEPAGE_BENCH_OUTPUT ?? null;
 
 const SCENARIOS: Scenario[] = [
   { name: '1000 monitors / 30 heartbeats / 14 uptime days', monitorCount: 1000, heartbeatPoints: 30, uptimeDays: 14 },
   { name: '5000 monitors / 30 heartbeats / 14 uptime days', monitorCount: 5000, heartbeatPoints: 30, uptimeDays: 14 },
+];
+
+const ROOT_MISS_SCENARIOS: RootMissScenario[] = [
+  { name: '50 monitors', monitorCount: 50 },
+  { name: '100 monitors', monitorCount: 100 },
+  { name: '250 monitors', monitorCount: 250 },
 ];
 
 function parsePositiveIntEnv(name: string, fallback: number): number {
@@ -182,9 +202,154 @@ function summarize(scenario: Scenario, samples: Sample[]) {
   };
 }
 
+function buildSyntheticHomepagePayload(
+  monitorCount: number,
+  heartbeatPoints: number,
+  uptimeDays: number,
+  now: number,
+) {
+  return {
+    generated_at: now,
+    bootstrap_mode: 'full' as const,
+    monitor_count_total: monitorCount,
+    site_title: 'Status Hub',
+    site_description: 'Production services',
+    site_locale: 'en' as const,
+    site_timezone: 'UTC',
+    uptime_rating_level: 3 as const,
+    overall_status: 'up' as const,
+    banner: {
+      source: 'monitors' as const,
+      status: 'operational' as const,
+      title: 'All Systems Operational',
+      down_ratio: null,
+    },
+    summary: {
+      up: monitorCount,
+      down: 0,
+      maintenance: 0,
+      paused: 0,
+      unknown: 0,
+    },
+    monitors: Array.from({ length: monitorCount }, (_, monitorIndex) => ({
+      id: monitorIndex + 1,
+      name: `Monitor ${monitorIndex + 1}`,
+      type: 'http' as const,
+      group_name: monitorIndex % 2 === 0 ? 'Core' : 'Edge',
+      status: 'up' as const,
+      is_stale: false,
+      last_checked_at: now - 30,
+      heartbeat_strip: {
+        checked_at: Array.from({ length: heartbeatPoints }, (_, pointIndex) => now - (pointIndex + 1) * 60),
+        status_codes: 'u'.repeat(heartbeatPoints),
+        latency_ms: Array.from(
+          { length: heartbeatPoints },
+          (_, pointIndex) => 40 + ((monitorIndex + pointIndex) % 50),
+        ),
+      },
+      uptime_30d: { uptime_pct: 100 },
+      uptime_day_strip: {
+        day_start_at: Array.from(
+          { length: uptimeDays },
+          (_, dayIndex) => now - (uptimeDays - dayIndex) * 86_400,
+        ),
+        downtime_sec: Array.from({ length: uptimeDays }, () => 0),
+        unknown_sec: Array.from({ length: uptimeDays }, () => 0),
+        uptime_pct_milli: Array.from({ length: uptimeDays }, () => 100_000),
+      },
+    })),
+    active_incidents: [],
+    maintenance_windows: {
+      active: [],
+      upcoming: [],
+    },
+    resolved_incident_preview: null,
+    maintenance_history_preview: null,
+  };
+}
+
+async function runOneRootMiss(scenario: RootMissScenario): Promise<RootMissSample> {
+  const now = 1_728_000_000;
+  const artifact = buildHomepageRenderArtifact(
+    buildSyntheticHomepagePayload(scenario.monitorCount, 30, 14, now),
+  );
+
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+
+  Object.defineProperty(globalThis, 'caches', {
+    configurable: true,
+    value: {
+      default: {
+        match: async () => null,
+        put: async () => undefined,
+      },
+    },
+  });
+
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(artifact), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  try {
+    const started = performance.now();
+    const response = await pageWorker.fetch(
+      new Request('https://status.example.com/', {
+        headers: { Accept: 'text/html' },
+      }),
+      {
+        UPTIMER_API_ORIGIN: 'https://api.example.com',
+        ASSETS: {
+          fetch: async () =>
+            new Response('<!doctype html><html><head><title>Uptimer</title></head><body><div id="root"></div></body></html>', {
+              status: 200,
+              headers: { 'Content-Type': 'text/html; charset=utf-8' },
+            }),
+        },
+      },
+      { waitUntil: () => undefined } as ExecutionContext,
+    );
+    await response.text();
+    const elapsedMs = performance.now() - started;
+
+    return {
+      elapsedMs,
+      artifactKB: Number((JSON.stringify(artifact).length / 1024).toFixed(1)),
+      preloadKB: Number((artifact.preload_html.length / 1024).toFixed(1)),
+      snapshotKB: Number((JSON.stringify(artifact.snapshot).length / 1024).toFixed(1)),
+    };
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: originalCaches,
+    });
+  }
+}
+
+function summarizeRootMiss(scenario: RootMissScenario, samples: RootMissSample[]) {
+  const elapsed = samples.map((sample) => sample.elapsedMs).sort((a, b) => a - b);
+  const totalElapsed = elapsed.reduce((sum, value) => sum + value, 0);
+  const first = samples[0];
+
+  return {
+    scenario: scenario.name,
+    runs: samples.length,
+    meanMs: Number((totalElapsed / samples.length).toFixed(3)),
+    medianMs: Number(percentile(elapsed, 0.5).toFixed(3)),
+    p95Ms: Number(percentile(elapsed, 0.95).toFixed(3)),
+    artifactKB: first?.artifactKB ?? 0,
+    preloadKB: first?.preloadKB ?? 0,
+    snapshotKB: first?.snapshotKB ?? 0,
+  };
+}
+
 describe('homepage snapshot benchmark', () => {
   it('measures homepage snapshot compute cost', async () => {
     const rows = [];
+    const rootMissRows = [];
 
     for (const scenario of SCENARIOS) {
       for (let index = 0; index < WARMUP_RUNS; index += 1) {
@@ -199,6 +364,19 @@ describe('homepage snapshot benchmark', () => {
       rows.push(summarize(scenario, samples));
     }
 
+    for (const scenario of ROOT_MISS_SCENARIOS) {
+      for (let index = 0; index < WARMUP_RUNS; index += 1) {
+        await runOneRootMiss(scenario);
+      }
+
+      const samples: RootMissSample[] = [];
+      for (let index = 0; index < MEASURE_RUNS; index += 1) {
+        samples.push(await runOneRootMiss(scenario));
+      }
+
+      rootMissRows.push(summarizeRootMiss(scenario, samples));
+    }
+
     console.log('Homepage snapshot benchmark');
     console.log(`Label: ${BENCH_LABEL}`);
     if (process.env.HOMEPAGE_BENCH_RUNS || process.env.HOMEPAGE_BENCH_WARMUPS) {
@@ -208,9 +386,16 @@ describe('homepage snapshot benchmark', () => {
     }
     console.log('');
     console.table(rows);
+    console.log('');
+    console.log('Pages homepage root miss benchmark');
+    console.table(rootMissRows);
 
     if (OUTPUT_PATH) {
-      await writeFile(OUTPUT_PATH, JSON.stringify(rows, null, 2), 'utf8');
+      await writeFile(
+        OUTPUT_PATH,
+        JSON.stringify({ snapshotCompute: rows, rootMiss: rootMissRows }, null, 2),
+        'utf8',
+      );
       console.log(`Wrote raw benchmark data to ${OUTPUT_PATH}`);
     }
   });
