@@ -16,11 +16,72 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function safeJsonForInlineScript(value) {
+  return JSON.stringify(value).replace(/</g, '\\u003c');
+}
+
 function normalizeSnapshotText(value, fallback) {
   if (typeof value !== 'string') return fallback;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : fallback;
 }
+
+const HOMEPAGE_PRELOAD_STYLE_TAG = `<style id="uptimer-preload-style">
+#uptimer-preload{min-height:100vh;background:#f8fafc;color:#0f172a;font:400 14px/1.45 ui-sans-serif,system-ui,sans-serif}
+#uptimer-preload *{box-sizing:border-box}
+#uptimer-preload .uw{max-width:80rem;margin:0 auto;padding:0 16px}
+#uptimer-preload .uh{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.95);backdrop-filter:blur(12px);border-bottom:1px solid rgba(226,232,240,.8)}
+#uptimer-preload .uhw{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0}
+#uptimer-preload .ut{min-width:0}
+#uptimer-preload .un{font-size:20px;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#uptimer-preload .ud{margin-top:4px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#uptimer-preload .sb{display:inline-flex;align-items:center;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;border:1px solid transparent}
+#uptimer-preload .sb-up{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+#uptimer-preload .sb-down{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
+#uptimer-preload .sb-maintenance{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+#uptimer-preload .sb-paused{background:#fffbeb;color:#b45309;border-color:#fde68a}
+#uptimer-preload .sb-unknown{background:#f8fafc;color:#475569;border-color:#cbd5e1}
+#uptimer-preload .um{padding:24px 0 40px}
+#uptimer-preload .bn{margin:0 0 24px;border:1px solid #e2e8f0;border-radius:18px;padding:20px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.04)}
+#uptimer-preload .bt{color:#475569}
+#uptimer-preload .bu{margin-top:4px;font-size:12px;color:#94a3b8}
+#uptimer-preload .sec{margin-top:24px}
+#uptimer-preload .sh{margin:0 0 12px;font-size:16px;font-weight:700}
+#uptimer-preload .st{display:grid;gap:12px}
+#uptimer-preload .sg{margin-top:20px}
+#uptimer-preload .sgh{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+#uptimer-preload .sgt{font-size:13px;font-weight:700;color:#475569}
+#uptimer-preload .sgc{font-size:12px;color:#94a3b8}
+#uptimer-preload .grid{display:grid;gap:12px}
+#uptimer-preload .card{border:1px solid rgba(226,232,240,.9);border-radius:16px;padding:14px;background:#fff}
+#uptimer-preload .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+#uptimer-preload .lhs{min-width:0;display:flex;align-items:flex-start;gap:10px}
+#uptimer-preload .dot{display:block;width:10px;height:10px;border-radius:999px;margin-top:5px}
+#uptimer-preload .dot-up{background:#10b981}
+#uptimer-preload .dot-down{background:#ef4444}
+#uptimer-preload .dot-maintenance{background:#3b82f6}
+#uptimer-preload .dot-paused{background:#f59e0b}
+#uptimer-preload .dot-unknown{background:#94a3b8}
+#uptimer-preload .mn{font-size:15px;font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#uptimer-preload .mt{margin-top:3px;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.08em}
+#uptimer-preload .rhs{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#uptimer-preload .up{font-size:12px;color:#94a3b8}
+#uptimer-preload .lbl{margin:12px 0 6px;font-size:11px;color:#94a3b8}
+#uptimer-preload .strip{height:20px;border-radius:8px;background:#e2e8f0;overflow:hidden}
+#uptimer-preload .usv{display:block;width:100%;height:100%}
+#uptimer-preload .ft{margin-top:12px;font-size:11px;color:#94a3b8}
+#uptimer-preload .ih{padding-top:24px;border-top:1px solid #e2e8f0}
+@media (min-width:640px){#uptimer-preload .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+html.dark #uptimer-preload{background:#0f172a;color:#f8fafc}
+html.dark #uptimer-preload .uh{background:rgba(15,23,42,.95);border-bottom-color:rgba(51,65,85,.9)}
+html.dark #uptimer-preload .ud,#uptimer-preload .sgt{color:#cbd5e1}
+html.dark #uptimer-preload .bn,html.dark #uptimer-preload .card{background:#1e293b;border-color:rgba(51,65,85,.95);box-shadow:none}
+html.dark #uptimer-preload .bt{color:#cbd5e1}
+html.dark #uptimer-preload .bu,#uptimer-preload .sgc,#uptimer-preload .up,#uptimer-preload .lbl,#uptimer-preload .ft{color:#94a3b8}
+html.dark #uptimer-preload .mt{color:#94a3b8}
+html.dark #uptimer-preload .strip{background:#334155}
+html.dark #uptimer-preload .ih{border-top-color:#334155}
+</style>`;
 
 function computeCacheControl(ageSeconds) {
   const remaining = Math.max(0, SNAPSHOT_MAX_AGE_SECONDS - ageSeconds);
@@ -138,9 +199,8 @@ async function fetchPublicHomepageArtifact(env) {
     const data = await resp.json();
     if (!data || typeof data !== 'object') return null;
 
-    if (typeof data.style_tag !== 'string') return null;
     if (typeof data.preload_html !== 'string') return null;
-    if (typeof data.bootstrap_script !== 'string') return null;
+    if (!data.snapshot || typeof data.snapshot !== 'object') return null;
 
     return data;
   } catch {
@@ -198,7 +258,7 @@ export default {
 
       injected = injected.replace(
         '</head>',
-        `  ${artifact.style_tag}\n  ${artifact.bootstrap_script}\n</head>`,
+        `  ${HOMEPAGE_PRELOAD_STYLE_TAG}\n  <script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__=${safeJsonForInlineScript(artifact.snapshot)};</script>\n</head>`,
       );
 
       const headers = new Headers(base.headers);

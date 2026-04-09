@@ -101,10 +101,8 @@ describe('pages homepage worker', () => {
       new Response(
         JSON.stringify({
           generated_at: 1_728_000_000,
-          style_tag: '<style id="uptimer-preload-style">body{}</style>',
           preload_html: '<div id="uptimer-preload"><main>artifact preload</main></div>',
-          bootstrap_script:
-            '<script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__={"site_title":"Status Hub"};</script>',
+          snapshot: { site_title: 'Status Hub' },
           meta_title: 'Status Hub',
           meta_description: 'Production',
         }),

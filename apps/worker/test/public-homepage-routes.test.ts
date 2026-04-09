@@ -122,9 +122,8 @@ describe('public homepage route', () => {
       data: payload,
       render: {
         generated_at: payload.generated_at,
-        style_tag: '<style id="uptimer-preload-style"></style>',
         preload_html: '<div id="uptimer-preload">hello</div>',
-        bootstrap_script: '<script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__={};</script>',
+        snapshot: payload,
         meta_title: 'Uptimer',
         meta_description: 'All Systems Operational',
       },
@@ -149,9 +148,8 @@ describe('public homepage route', () => {
     const payload = samplePayload(190);
     const render = {
       generated_at: payload.generated_at,
-      style_tag: '<style id="uptimer-preload-style"></style>',
       preload_html: '<div id="uptimer-preload">hello</div>',
-      bootstrap_script: '<script>globalThis.__UPTIMER_INITIAL_HOMEPAGE__={};</script>',
+      snapshot: payload,
       meta_title: 'Uptimer',
       meta_description: 'All Systems Operational',
     };

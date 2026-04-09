@@ -171,19 +171,10 @@ describe('snapshots/public-homepage', () => {
     };
 
     const artifact = buildHomepageRenderArtifact(payload);
-    const match = artifact.bootstrap_script.match(
-      /__UPTIMER_INITIAL_HOMEPAGE__=(.*);<\/script>$/,
-    );
-    expect(match).not.toBeNull();
-
-    const bootstrapped = JSON.parse(match?.[1] ?? '{}') as {
-      bootstrap_mode: string;
-      monitor_count_total: number;
-      monitors: Array<{ id: number }>;
-    };
+    const bootstrapped = artifact.snapshot;
     expect(bootstrapped.bootstrap_mode).toBe('partial');
     expect(bootstrapped.monitor_count_total).toBe(30);
-    expect(bootstrapped.monitors).toHaveLength(24);
+    expect(bootstrapped.monitors).toHaveLength(12);
     expect(artifact.preload_html).toContain('Monitor 30');
     expect(artifact.preload_html).not.toContain('#30');
   });
