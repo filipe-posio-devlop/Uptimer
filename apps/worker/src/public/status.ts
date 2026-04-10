@@ -40,7 +40,7 @@ export async function computePublicStatusPayload(
     overall_status: monitorData.overallStatus,
     banner: buildPublicStatusBanner({
       counts: monitorData.summary,
-      monitors: monitorData.monitors,
+      monitorCount: monitorData.monitors.length,
       activeIncidents,
       activeMaintenanceWindows: maintenanceWindows.active,
     }),

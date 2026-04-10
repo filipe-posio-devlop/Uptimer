@@ -960,11 +960,11 @@ export async function readPublicSiteSettings(db: D1Database) {
 
 export function buildPublicStatusBanner(opts: {
   counts: PublicStatusResponse['summary'];
-  monitors: PublicStatusResponse['monitors'];
+  monitorCount: number;
   activeIncidents: FilteredIncidentEntry[];
   activeMaintenanceWindows: FilteredMaintenanceWindowEntry[];
 }): Banner {
-  const { counts, monitors, activeIncidents, activeMaintenanceWindows } = opts;
+  const { counts, monitorCount, activeIncidents, activeMaintenanceWindows } = opts;
   const incidents = activeIncidents.map((entry) => entry.row);
   if (incidents.length > 0) {
     const impactRank = (impact: PublicStatusResponse['active_incidents'][number]['impact']) => {
@@ -1015,7 +1015,7 @@ export function buildPublicStatusBanner(opts: {
     };
   }
 
-  const total = monitors.length;
+  const total = monitorCount;
   const downRatio = total === 0 ? 0 : counts.down / total;
 
   if (counts.down > 0) {
